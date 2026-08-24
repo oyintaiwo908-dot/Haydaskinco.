@@ -3,9 +3,20 @@
  * Falls back to the static mock array ONLY when Supabase is not configured.
  * When Supabase is configured, errors are surfaced — never silently swapped for mock data.
  */
+import { createClient as createSb } from "@supabase/supabase-js"
 import { createClient, createAdminBrowserClient } from "@/lib/supabase/client"
 import type { Journal } from "@/lib/journals"
 import { journals as mockJournals } from "@/lib/journals"
+
+function getStorefrontReadClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  if (typeof window !== "undefined") return createClient()
+  return createSb(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToJournal(row: any): Journal {
@@ -43,7 +54,7 @@ export async function getAllJournals(): Promise<Journal[]> {
 }
 
 export async function getPublishedJournals(): Promise<Journal[]> {
-  const supabase = createClient()
+  const supabase = getStorefrontReadClient()
   if (!supabase) return mockJournals.filter(j => j.status === "published")
 
   const { data, error } = await supabase

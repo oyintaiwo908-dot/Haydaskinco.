@@ -1,22 +1,8 @@
-"use client"
-
-import { useEffect, useState } from "react"
 import { ProductCard } from "@/components/product-card"
-import { getRelatedProducts } from "@/lib/supabase/products"
 import type { Product } from "@/lib/products"
 
-export function RelatedProducts({ currentId }: { currentId: string }) {
-  const [related, setRelated] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    getRelatedProducts(currentId, 4).then(data => {
-      setRelated(data)
-      setLoading(false)
-    })
-  }, [currentId])
-
-  if (!loading && related.length === 0) return null
+export function RelatedProducts({ products }: { products: Product[] }) {
+  if (!products.length) return null
 
   return (
     <section className="border-t border-border bg-secondary">
@@ -27,13 +13,9 @@ export function RelatedProducts({ currentId }: { currentId: string }) {
           </h2>
         </div>
         <div className="grid grid-cols-2 gap-x-3 md:gap-x-5 gap-y-6 md:gap-y-12 md:grid-cols-4">
-          {loading
-            ? [...Array(4)].map((_, i) => (
-              <div key={i} className="aspect-[3/4] animate-pulse bg-muted/40" />
-            ))
-            : related.map((product, index) => (
-              <ProductCard key={product.id} product={product} index={index} isWhiteBackground={true} />
-            ))}
+          {products.map((product, index) => (
+            <ProductCard key={product.id} product={product} index={index} isWhiteBackground />
+          ))}
         </div>
       </div>
     </section>

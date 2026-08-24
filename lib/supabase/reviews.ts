@@ -69,9 +69,10 @@ export async function getMyReviews(): Promise<ReviewRow[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
+  // No embed — reviews→products FK was dropped in 020 for deal__* ids
   const { data, error } = await supabase
     .from("reviews")
-    .select("*, products(name, image_url, category)")
+    .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
 
@@ -79,7 +80,33 @@ export async function getMyReviews(): Promise<ReviewRow[]> {
     console.error("[reviews] mine:", error.message)
     return []
   }
-  return (data ?? []).map(mapReview)
+
+  const rows = data ?? []
+  const productIds = [
+    ...new Set(
+      rows
+        .map(r => String(r.product_id ?? ""))
+        .filter(id => id && !id.startsWith("deal__")),
+    ),
+  ]
+
+  const productMeta = new Map<string, { name?: string; image_url?: string; category?: string }>()
+  if (productIds.length) {
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, name, image_url, category")
+      .in("id", productIds)
+    for (const p of products ?? []) {
+      productMeta.set(String(p.id), p as { name?: string; image_url?: string; category?: string })
+    }
+  }
+
+  return rows.map(row =>
+    mapReview({
+      ...row,
+      products: productMeta.get(String(row.product_id)) ?? null,
+    }),
+  )
 }
 
 export async function submitReview(input: {

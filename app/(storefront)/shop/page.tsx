@@ -3,6 +3,7 @@ import { Suspense } from "react"
 import { PageHeader } from "@/components/page-header"
 import { ShopGrid } from "@/components/shop-grid"
 import { queryProducts } from "@/lib/supabase/products"
+import { getCategoryTree, resolveCategoryName } from "@/lib/supabase/categories"
 
 export const metadata: Metadata = {
   title: "Shop — HAYDA SKINCo.",
@@ -13,15 +14,21 @@ export const metadata: Metadata = {
 export const revalidate = 60
 
 type Props = {
-  searchParams: Promise<{ category?: string; brand?: string }>
+  searchParams: Promise<{ category?: string; brand?: string; skinType?: string }>
 }
 
 export default async function ShopPage({ searchParams }: Props) {
   const sp = await searchParams
+  const tree = await getCategoryTree()
+  const categoryName = sp.category
+    ? resolveCategoryName(tree, sp.category) ?? undefined
+    : undefined
+
   const products = await queryProducts({
-    category: sp.category,
+    category: categoryName,
     brand: sp.brand,
     sort: "featured",
+    limit: 96,
   })
 
   return (
@@ -32,7 +39,10 @@ export default async function ShopPage({ searchParams }: Props) {
         description="Trusted brands. Authentic products. Delivered anywhere in Nigeria."
       />
       <Suspense>
-        <ShopGrid initialProducts={products} />
+        <ShopGrid
+          initialProducts={products}
+          initialCategory={categoryName ?? "All"}
+        />
       </Suspense>
     </>
   )

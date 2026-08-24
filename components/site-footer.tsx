@@ -190,8 +190,10 @@ export function SiteFooter() {
               <Image
                 src="/logo.png"
                 alt="HAYDA SKINCo. logo"
-                width={0}
-                height={0}
+                width={160}
+                height={200}
+                sizes="80px"
+                quality={100}
                 className="size-20 object-contain"
               />
             </Link>

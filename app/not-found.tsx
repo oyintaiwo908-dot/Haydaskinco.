@@ -17,8 +17,10 @@ export default function NotFound() {
         <Image
           src="/logo.png"
           alt="HAYDA SKINCo."
-          width={80}
-          height={80}
+          width={160}
+          height={200}
+          sizes="(max-width: 768px) 64px, 80px"
+          quality={100}
           className="object-contain size-16 md:size-20"
         />
       </Link>

@@ -109,8 +109,10 @@ export function SiteNavbar() {
             <Image
               src="/logo.png"
               alt="HAYDA SKINCo. logo mark"
-              width={0}
-              height={0}
+              width={160}
+              height={200}
+              sizes="80px"
+              quality={100}
               className="object-contain size-20"
               priority
             />
@@ -307,7 +309,15 @@ export function SiteNavbar() {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2">
-                <Image src="/logo.png" alt="HAYDA logo" width={64} height={64} className="object-contain size-12" />
+                <Image
+                  src="/logo.png"
+                  alt="HAYDA logo"
+                  width={96}
+                  height={120}
+                  sizes="48px"
+                  quality={100}
+                  className="object-contain size-12"
+                />
 
               </Link>
               <button type="button" onClick={() => setMobileOpen(false)}>

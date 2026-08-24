@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Check, Plus, Heart, Star } from "lucide-react"
-import { useCart } from "@/components/cart-provider"
-import { useFavorites } from "@/components/favorites-provider"
+import { Star } from "lucide-react"
+import {
+  ProductCardAddButton,
+  ProductCardFavoriteButton,
+} from "@/components/product-card-actions"
 import { formatPrice, getEffectivePrice, hasDiscount, productTags, type Product } from "@/lib/products"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +16,10 @@ function tagClass(tag: string) {
     : "bg-accent text-accent-foreground"
 }
 
+/**
+ * Product card (client — used from shop filters and RSC pages alike).
+ * Cart / favorite interactions live in product-card-actions.
+ */
 export function ProductCard({
   product,
   index = 0,
@@ -27,24 +32,8 @@ export function ProductCard({
   /** Override product detail link (e.g. `/deal/[id]` for bundles). */
   href?: string
 }) {
-  const { addItem } = useCart()
-  const { isFavorited, toggleFavorite } = useFavorites()
-  const [added, setAdded] = useState(false)
-  const favorited = isFavorited(product.id)
   const detailHref = href ?? `/product/${product.id}`
   const tags = productTags(product)
-
-  function handleAdd(e: React.MouseEvent) {
-    e.preventDefault()
-    addItem(product)
-    setAdded(true)
-    window.setTimeout(() => setAdded(false), 1600)
-  }
-
-  function handleFavorite(e: React.MouseEvent) {
-    e.preventDefault()
-    toggleFavorite(product)
-  }
 
   return (
     <article className="group flex flex-col" style={{ animationDelay: `${index * 90}ms` }}>
@@ -80,19 +69,7 @@ export function ProductCard({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={handleFavorite}
-          aria-label={favorited ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
-          className={cn(
-            "absolute right-3 top-3 z-10 flex size-6 md:size-8 items-center justify-center rounded-full border backdrop-blur-sm transition-all duration-300",
-            favorited
-              ? "border-gold/40 bg-lavender text-gold opacity-100"
-              : "border-background/30 bg-background/60 text-foreground/60 opacity-0 group-hover:opacity-100 hover:border-gold/40 hover:text-gold",
-          )}
-        >
-          <Heart className={cn("size-2.5 md:size-3.5 transition-all", favorited && "fill-gold")} />
-        </button>
+        <ProductCardFavoriteButton product={product} />
 
         <Image
           src={product.image || "/placeholder.svg"}
@@ -102,25 +79,7 @@ export function ProductCard({
           className="object-contain mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-105"
         />
 
-        <div className="absolute inset-x-3 bottom-3 translate-y-3 opacity-0 transition-all duration-400 ease-out group-hover:translate-y-0 group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={handleAdd}
-            aria-label={`Add ${product.name} to cart`}
-            className={cn(
-              "flex w-full items-center justify-center gap-2 border px-4 py-3 text-[11px] font-medium uppercase tracking-[0.18em] backdrop-blur-sm transition-all duration-300",
-              added
-                ? "border-gold bg-gold text-gold-foreground"
-                : "border-foreground bg-background/90 text-foreground hover:border-gold hover:bg-gold hover:text-gold-foreground",
-            )}
-          >
-            {added ? (
-              <><Check className="size-2.5 md:size-3.5" /> Added</>
-            ) : (
-              <><Plus className="size-2.5 md:size-3.5" /> Add to Cart</>
-            )}
-          </button>
-        </div>
+        <ProductCardAddButton product={product} />
       </Link>
 
       <div className="flex flex-1 flex-col items-center px-1 pt-5 text-center">

@@ -6,6 +6,12 @@ import {
   initializeTransaction,
   isPaystackConfigured,
 } from "@/lib/paystack"
+import {
+  calculateUnitPrice,
+  getProductMoq,
+  normalizePriceTiers,
+} from "@/lib/products"
+import { bareDealId, dealSalePrice, isDealCartId } from "@/lib/deals"
 import type { CheckoutItem } from "@/lib/supabase/orders"
 
 type Body = {
@@ -29,6 +35,15 @@ type Body = {
   promoCodes?: string[] | null
 }
 
+type PricedLine = {
+  productId: string
+  name: string
+  image: string
+  category: string
+  price: number
+  quantity: number
+}
+
 /** Where Paystack should send the customer after payment. */
 function resolveCheckoutOrigin(request: Request): string {
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "")
@@ -50,6 +65,20 @@ function resolveCheckoutOrigin(request: Request): string {
   return fromEnv ?? "http://localhost:3000"
 }
 
+function allowedSkuPrices(
+  basePrice: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  variants: any,
+): Set<number> {
+  const allowed = new Set<number>([Math.round(basePrice)])
+  if (!Array.isArray(variants)) return allowed
+  for (const v of variants) {
+    const p = Math.round(Number(v?.price ?? v?.listPrice ?? NaN))
+    if (Number.isFinite(p) && p > 0) allowed.add(p)
+  }
+  return allowed
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Body
@@ -63,47 +92,156 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Incomplete shipping details." }, { status: 400 })
     }
 
-    const subtotal = items.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0)
-    const shippingCost = shipping.shippingMethod === "express" ? 3000 : 0
-    const tax = Math.round(subtotal * 0.075)
-
-    let discount = 0
-    const appliedCodes: string[] = []
-
     const admin = createAdminClient()
     const supabase = admin ?? (await createClient())
     if (!supabase) {
       return NextResponse.json({ error: "Database not configured." }, { status: 503 })
     }
 
-    // Validate live stock before creating the order
-    const productIds = items
-      .map(i => i.productId)
-      .filter((id): id is string => Boolean(id) && !String(id).startsWith("deal__"))
-    if (productIds.length) {
-      const { data: stockRows } = await supabase
-        .from("products")
-        .select("id, name, stock, is_published")
-        .in("id", productIds)
+    const productIds = [
+      ...new Set(
+        items
+          .map(i => i.productId)
+          .filter((id): id is string => Boolean(id) && !isDealCartId(String(id))),
+      ),
+    ]
+    const dealIds = [
+      ...new Set(
+        items
+          .map(i => i.productId)
+          .filter((id): id is string => Boolean(id) && isDealCartId(String(id)))
+          .map(id => bareDealId(String(id))),
+      ),
+    ]
 
-      const byId = new Map((stockRows ?? []).map(r => [r.id as string, r]))
-      const problems: string[] = []
-      for (const item of items) {
-        if (!item.productId || String(item.productId).startsWith("deal__")) continue
-        const row = byId.get(item.productId)
-        if (!row || row.is_published === false || Number(row.stock) <= 0) {
-          problems.push(`${item.name || item.productId} is out of stock`)
-        } else if (Number(item.quantity) > Number(row.stock)) {
-          problems.push(`${row.name} only has ${row.stock} left (you requested ${item.quantity})`)
+    const [productsRes, dealsRes] = await Promise.all([
+      productIds.length
+        ? supabase
+            .from("products")
+            .select(
+              "id, name, price, discount_pct, price_tiers, moq, stock, is_published, image_url, category, categories, variants",
+            )
+            .in("id", productIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      dealIds.length
+        ? supabase
+            .from("deals")
+            .select("id, title, image_url, original_price, discount_pct, price, items, is_active, brand_name")
+            .in("id", dealIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ])
+
+    const productsById = new Map(
+      (productsRes.data ?? []).map(r => [String(r.id), r as Record<string, unknown>]),
+    )
+    const dealsById = new Map(
+      (dealsRes.data ?? []).map(r => [String(r.id), r as Record<string, unknown>]),
+    )
+
+    const problems: string[] = []
+    const pricedLines: PricedLine[] = []
+
+    for (const item of items) {
+      const qty = Math.max(1, Math.floor(Number(item.quantity) || 0))
+      if (!item.productId || qty < 1) {
+        problems.push("Invalid cart line")
+        continue
+      }
+
+      if (isDealCartId(item.productId)) {
+        const deal = dealsById.get(bareDealId(item.productId))
+        if (!deal || deal.is_active === false) {
+          problems.push(`${item.name || "Deal"} is no longer available`)
+          continue
         }
+        const originalPrice =
+          Number(deal.original_price) ||
+          (Array.isArray(deal.items)
+            ? (deal.items as { price?: number }[]).reduce((s, i) => s + Number(i.price || 0), 0)
+            : 0)
+        const discountPct = Math.min(100, Math.max(0, Number(deal.discount_pct ?? 0)))
+        const salePrice = dealSalePrice({
+          originalPrice,
+          discountPct,
+          salePrice: Number(deal.price) || originalPrice,
+        })
+        pricedLines.push({
+          productId: item.productId,
+          name: String(deal.title || item.name),
+          image: String(deal.image_url || item.image || "/product-bundle.png"),
+          category: "Deal",
+          price: salePrice,
+          quantity: qty,
+        })
+        continue
       }
-      if (problems.length) {
-        return NextResponse.json(
-          { error: problems.join(". ") + ".", stockIssues: problems },
-          { status: 409 },
-        )
+
+      const row = productsById.get(item.productId)
+      if (!row || row.is_published === false) {
+        problems.push(`${item.name || item.productId} is unavailable`)
+        continue
       }
+      const stock = Number(row.stock) || 0
+      if (stock <= 0) {
+        problems.push(`${row.name || item.name} is out of stock`)
+        continue
+      }
+      const moq = getProductMoq({ moq: Number(row.moq) || 1 })
+      if (qty < moq) {
+        problems.push(`${row.name} requires a minimum of ${moq}`)
+        continue
+      }
+      if (qty > stock) {
+        problems.push(`${row.name} only has ${stock} left (you requested ${qty})`)
+        continue
+      }
+
+      const basePrice = Math.round(Number(row.price) || 0)
+      const discountPct = Math.min(100, Math.max(0, Number(row.discount_pct) || 0))
+      const tiers = normalizePriceTiers(row.price_tiers as never, basePrice)
+      const allowed = allowedSkuPrices(basePrice, row.variants)
+      const requestedSku = item.skuPrice != null ? Math.round(Number(item.skuPrice)) : basePrice
+      const skuPrice = allowed.has(requestedSku) ? requestedSku : basePrice
+
+      const unit = calculateUnitPrice({
+        basePrice,
+        skuPrice,
+        quantity: qty,
+        priceTiers: tiers,
+        discountPct,
+      })
+
+      const cats = Array.isArray(row.categories)
+        ? (row.categories as string[]).filter(Boolean)
+        : []
+      const category = cats[0] || String(row.category || item.category || "")
+
+      pricedLines.push({
+        productId: item.productId,
+        name: String(row.name || item.name),
+        image: String(row.image_url || item.image || "/placeholder.svg"),
+        category,
+        price: unit,
+        quantity: qty,
+      })
     }
+
+    if (problems.length) {
+      return NextResponse.json(
+        { error: problems.join(". ") + ".", stockIssues: problems },
+        { status: 409 },
+      )
+    }
+    if (!pricedLines.length) {
+      return NextResponse.json({ error: "Cart is empty." }, { status: 400 })
+    }
+
+    const subtotal = pricedLines.reduce((s, i) => s + i.price * i.quantity, 0)
+    const shippingCost = shipping.shippingMethod === "express" ? 3000 : 0
+    const tax = Math.round(subtotal * 0.075)
+
+    let discount = 0
+    const appliedCodes: string[] = []
 
     // Attach customer session only — never the admin cookie jar.
     // Also require shipping email to match the signed-in customer email for user_id.
@@ -181,14 +319,7 @@ export async function POST(request: Request) {
       reference,
       user_id: userId,
       guest_email: shipping.email.trim().toLowerCase(),
-      items: items.map(i => ({
-        productId: i.productId,
-        name: i.name,
-        image: i.image,
-        category: i.category,
-        price: Number(i.price),
-        quantity: Number(i.quantity),
-      })),
+      items: pricedLines,
       shipping_address: {
         firstName: shipping.firstName,
         lastName: shipping.lastName,

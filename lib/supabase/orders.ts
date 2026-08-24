@@ -18,8 +18,11 @@ export type CheckoutItem = {
   name: string
   image: string
   category: string
+  /** Client-computed unit price — ignored for totals; server re-prices from DB. */
   price: number
   quantity: number
+  /** Optional selected SKU/variant list price; validated against product variants. */
+  skuPrice?: number
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

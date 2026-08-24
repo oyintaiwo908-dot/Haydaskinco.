@@ -1,8 +1,19 @@
 /**
  * Admin brand CRUD helpers.
  */
+import { createClient as createSb } from "@supabase/supabase-js"
 import { createAdminBrowserClient, createClient } from "@/lib/supabase/client"
 import { BRANDS as mockBrands } from "@/lib/products"
+
+function getStorefrontReadClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  if (typeof window !== "undefined") return createClient() ?? createAdminBrowserClient()
+  return createSb(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
 
 export type Brand = {
   id: string
@@ -56,7 +67,7 @@ export async function getBrandsForAdmin(): Promise<Brand[]> {
 
 /** Active brands for product form / storefront. */
 export async function getActiveBrands(): Promise<Brand[]> {
-  const supabase = createClient() ?? createAdminBrowserClient()
+  const supabase = getStorefrontReadClient()
   if (!supabase) {
     return mockBrands.map(b => ({
       id: b.id,

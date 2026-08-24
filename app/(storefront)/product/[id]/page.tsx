@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { getProductById, getProductIds } from "@/lib/supabase/products"
+import { getProductById, getProductIds, getRelatedProducts } from "@/lib/supabase/products"
 import { ProductDetail } from "@/components/product-detail"
 import { ProductReviews } from "@/components/product-reviews"
 import { RelatedProducts } from "@/components/related-products"
@@ -36,10 +36,12 @@ export default async function ProductPage({
   const product = await getProductById(id)
   if (!product) notFound()
 
+  const related = await getRelatedProducts(product.id, 4)
+
   return (
     <>
       <ProductDetail product={product} />
-      <RelatedProducts currentId={product.id} />
+      <RelatedProducts products={related} />
       <ProductReviews productId={product.id} />
     </>
   )

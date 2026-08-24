@@ -112,14 +112,21 @@ export async function getPendingRewardPromo(): Promise<PendingRewardPromo | null
     return null
   }
 
-  for (const row of data ?? []) {
-    if (!row.promo_code) continue
-    const { data: promo } = await supabase
-      .from("promo_codes")
-      .select("code, discount_ngn, max_uses, used_count, is_active")
-      .eq("code", row.promo_code)
-      .maybeSingle()
+  const rows = (data ?? []).filter(r => r.promo_code)
+  if (!rows.length) return null
 
+  const codes = [...new Set(rows.map(r => String(r.promo_code)))]
+  const { data: promos } = await supabase
+    .from("promo_codes")
+    .select("code, discount_ngn, max_uses, used_count, is_active")
+    .in("code", codes)
+
+  const promoByCode = new Map(
+    (promos ?? []).map(p => [String(p.code), p]),
+  )
+
+  for (const row of rows) {
+    const promo = promoByCode.get(String(row.promo_code))
     if (!promo || !promo.is_active) continue
     if (promo.max_uses != null && promo.used_count >= promo.max_uses) continue
 

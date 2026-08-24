@@ -2,10 +2,21 @@
  * Deals / Bundles query helpers.
  * Falls back to the static mock array ONLY when Supabase is not configured.
  */
+import { createClient as createSb } from "@supabase/supabase-js"
 import { createClient, createAdminBrowserClient } from "@/lib/supabase/client"
 import type { Deal, DealItem } from "@/lib/deals"
 import { deals as mockDeals } from "@/lib/deals"
 import { getEffectivePrice } from "@/lib/products"
+
+function getStorefrontReadClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  if (typeof window !== "undefined") return createClient()
+  return createSb(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapItems(raw: unknown): DealItem[] {
@@ -113,7 +124,7 @@ export async function getAllDeals(): Promise<Deal[]> {
 }
 
 export async function getActiveDeals(): Promise<Deal[]> {
-  const supabase = createClient()
+  const supabase = getStorefrontReadClient()
   if (!supabase) return mockDeals.filter(d => d.status === "active")
 
   const { data, error } = await supabase

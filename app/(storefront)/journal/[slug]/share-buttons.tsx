@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Link2, Check } from "lucide-react"
+import { getSiteUrl } from "@/lib/site"
 
 function XIcon() {
   return (
@@ -22,9 +23,8 @@ function WhatsAppIcon() {
 export function ShareButtons({ title, slug }: { title: string; slug: string }) {
   const [copied, setCopied] = useState(false)
 
-  const url = typeof window !== "undefined"
-    ? `${window.location.origin}/journal/${slug}`
-    : `https://www.haydaskinco.com/journal/${slug}`
+  // Stable across SSR/CSR so share hrefs don't hydrate-mismatch.
+  const url = `${getSiteUrl()}/journal/${slug}`
 
   const encodedUrl   = encodeURIComponent(url)
   const encodedTitle = encodeURIComponent(title)

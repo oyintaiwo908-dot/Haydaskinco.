@@ -144,12 +144,16 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
       },
     })
     if (error) return error.message
-    // Fire-and-forget welcome email (server holds Resend key)
-    void fetch("/api/email/welcome", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name }),
-    })
+    // Welcome only when a session exists (email confirmation may leave session null)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      void fetch("/api/email/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ email, name }),
+      })
+    }
     return null
   }
 

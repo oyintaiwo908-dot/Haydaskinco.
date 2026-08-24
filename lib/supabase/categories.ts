@@ -90,11 +90,14 @@ export function resolveCategoryName(
 ): string | null {
   if (!slugOrName || slugOrName === "All") return null
   const decoded = decodeURIComponent(slugOrName).trim()
+  if (!decoded) return null
   const all = flatCategories(tree)
   const bySlug = all.find(c => c.slug === decoded || c.slug === slugifyCategory(decoded))
   if (bySlug) return bySlug.name
   const byName = all.find(c => c.name.toLowerCase() === decoded.toLowerCase())
-  return byName?.name ?? decoded
+  if (byName) return byName.name
+  // Do not return raw slug — products store display names, not slugs
+  return null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

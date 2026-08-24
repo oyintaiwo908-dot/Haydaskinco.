@@ -1,9 +1,14 @@
 import { createClient } from "@/lib/supabase/client"
 import type { Product } from "@/lib/products"
-import { rowToProduct } from "@/lib/supabase/products"
+import { getProductsByIds } from "@/lib/supabase/products"
 import { bareDealId, dealAsProduct, isDealCartId } from "@/lib/deals"
 import { getDealById } from "@/lib/supabase/deals"
 
+/**
+ * Fetch wishlist without PostgREST embeds.
+ * Migration 020 dropped wishlist→products FK so deal__* ids can be stored;
+ * nested `products(...)` selects therefore fail schema-cache lookups.
+ */
 export async function fetchWishlistProducts(): Promise<Product[]> {
   const supabase = createClient()
   if (!supabase) return []
@@ -13,7 +18,7 @@ export async function fetchWishlistProducts(): Promise<Product[]> {
 
   const { data: rows, error } = await supabase
     .from("wishlist")
-    .select("product_id, products(*, brands(name))")
+    .select("product_id")
     .eq("user_id", user.id)
     .order("added_at", { ascending: false })
 
@@ -22,18 +27,29 @@ export async function fetchWishlistProducts(): Promise<Product[]> {
     return []
   }
 
-  const out: Product[] = []
-  for (const r of rows ?? []) {
-    const id = String((r as { product_id?: string }).product_id ?? "")
-    if (isDealCartId(id)) {
-      const deal = await getDealById(bareDealId(id))
-      if (deal && deal.status === "active") out.push(dealAsProduct(deal))
-      continue
-    }
-    const productRow = (r as { products?: unknown }).products
-    if (productRow) out.push(rowToProduct(productRow as never))
+  const ids = (rows ?? [])
+    .map(r => String((r as { product_id?: string }).product_id ?? ""))
+    .filter(Boolean)
+
+  const productIds = [...new Set(ids.filter(id => !isDealCartId(id)))]
+  const dealCartIds = [...new Set(ids.filter(isDealCartId))]
+
+  const [products, deals] = await Promise.all([
+    getProductsByIds(productIds),
+    Promise.all(
+      dealCartIds.map(async id => {
+        const deal = await getDealById(bareDealId(id))
+        return deal && deal.status === "active" ? { cartId: id, product: dealAsProduct(deal) } : null
+      }),
+    ),
+  ])
+
+  const byId = new Map<string, Product>(products.map(p => [p.id, p]))
+  for (const entry of deals) {
+    if (entry) byId.set(entry.cartId, entry.product)
   }
-  return out
+
+  return ids.map(id => byId.get(id)).filter((p): p is Product => Boolean(p))
 }
 
 export async function addToWishlist(productId: string): Promise<string | null> {

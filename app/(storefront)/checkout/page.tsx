@@ -363,6 +363,7 @@ export default function CheckoutPage() {
               category: i.category,
               price: unit,
               quantity: i.quantity,
+              skuPrice: i.skuPrice ?? i.listPrice ?? i.price,
             }
           }),
           shipping,

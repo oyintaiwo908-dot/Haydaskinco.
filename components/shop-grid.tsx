@@ -29,14 +29,21 @@ const SORT_OPTIONS = [
   { label: "Most Reviews", value: "reviews" },
 ]
 
-export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
+export function ShopGrid({
+  initialProducts,
+  initialCategory = "All",
+}: {
+  initialProducts?: Product[]
+  /** Already-resolved display name from the server (not a URL slug). */
+  initialCategory?: string
+}) {
   const searchParams = useSearchParams()
   const urlCategory = searchParams.get("category") ?? "All"
   const urlBrand = searchParams.get("brand") ?? "All"
   const urlSkinType = searchParams.get("skinType") ?? "All"
 
   const [categoryTree, setCategoryTree] = useState<CategorySection[]>([])
-  const [category, setCategory]   = useState("All")
+  const [category, setCategory]   = useState(initialCategory)
   const [brand, setBrand]         = useState(urlBrand)
   const [concern, setConcern]     = useState("All")
   const [ingredient, setIngredient] = useState("All")
@@ -51,9 +58,13 @@ export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
   const [brandNames, setBrandNames] = useState<string[]>([])
   const [concernOptions, setConcernOptions] = useState<string[]>([...ALL_CONCERNS])
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([...ALL_INGREDIENTS])
+  const [treeReady, setTreeReady] = useState(false)
 
   useEffect(() => {
-    getCategoryTree().then(setCategoryTree)
+    getCategoryTree().then(tree => {
+      setCategoryTree(tree)
+      setTreeReady(true)
+    })
     getActiveBrands().then(list => setBrandNames(list.map(b => b.name)))
     void import("@/lib/supabase/catalog").then(({ getCatalogNames }) => {
       getCatalogNames("concerns").then(n => { if (n.length) setConcernOptions(n) })
@@ -63,13 +74,14 @@ export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
 
   // Keep filters in sync when navigating via navbar (/shop?category=… / ?brand=… / ?skinType=…)
   useEffect(() => {
-    setBrand(urlBrand)
+    setBrand(urlBrand === "All" || !urlBrand ? "All" : urlBrand)
+
     if (urlCategory === "All" || !urlCategory) {
       setCategory("All")
-    } else if (categoryTree.length) {
-      setCategory(resolveCategoryName(categoryTree, urlCategory) ?? urlCategory)
-    } else {
-      setCategory(urlCategory)
+    } else if (treeReady) {
+      const resolved = resolveCategoryName(categoryTree, urlCategory)
+      // Only apply once we can resolve slug → display name
+      if (resolved) setCategory(resolved)
     }
 
     if (urlSkinType === "All" || !urlSkinType) {
@@ -77,16 +89,24 @@ export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
     } else {
       setSkinType(resolveCatalogLabel(ALL_SKIN_TYPES, urlSkinType) ?? decodeURIComponent(urlSkinType))
     }
-  }, [urlCategory, urlBrand, urlSkinType, categoryTree])
+  }, [urlCategory, urlBrand, urlSkinType, categoryTree, treeReady])
 
   // Query Supabase with filters (DB-level), not client-side array filtering
   useEffect(() => {
+    // URL category is a slug; wait until the tree can resolve it to a display name
+    // so we never query with `body-moisturizers-oils` against name-based DB values.
+    const urlNeedsResolve = Boolean(urlCategory && urlCategory !== "All")
+    if (urlNeedsResolve && !treeReady) return
+
     let cancelled = false
     setLoading(true)
+
     const categoryName =
       category === "All"
         ? "All"
-        : (resolveCategoryName(categoryTree, category) ?? category)
+        : (resolveCategoryName(categoryTree, category) ??
+            (treeReady ? "All" : category))
+
     queryProducts({
       category: categoryName,
       brand,
@@ -97,13 +117,14 @@ export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
       inStockOnly,
       minRating,
       sort,
+      limit: 96,
     }).then(list => {
       if (!cancelled) setFiltered(list)
     }).finally(() => {
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [category, brand, concern, ingredient, skinType, sort, priceMax, inStockOnly, minRating, categoryTree])
+  }, [category, brand, concern, ingredient, skinType, sort, priceMax, inStockOnly, minRating, categoryTree, treeReady, urlCategory])
 
   const activeCount = [
     category !== "All", brand !== "All", concern !== "All",
@@ -179,7 +200,6 @@ export function ShopGrid({ initialProducts }: { initialProducts?: Product[] }) {
           <FilterSelect label="Concern"    value={concern}    onChange={setConcern}    options={["All", ...concernOptions]} />
           <FilterSelect label="Ingredient" value={ingredient} onChange={setIngredient} options={["All", ...ingredientOptions]} />
           <FilterSelect label="Skin Type"  value={skinType}   onChange={setSkinType}   options={["All", ...ALL_SKIN_TYPES]} />
-          {/* Min Rating filter */}
           <div>
             <p className="mb-2 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Min Rating</p>
             <div className="flex items-center gap-1">

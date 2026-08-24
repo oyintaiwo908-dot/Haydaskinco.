@@ -32,7 +32,18 @@ export type ProductQuery = {
   offset?: number
   /** Include unpublished (admin lists). */
   includeUnpublished?: boolean
+  /** Full row for admin/PDP; card = grid fields only (default on storefront). */
+  fields?: "card" | "full"
 }
+
+/** Columns needed for ProductCard / cart add — avoids shipping full PDP blobs on grids. */
+const PRODUCT_CARD_SELECT =
+  "id, name, brand_name, tagline, price, discount_pct, moq, price_tiers, image_url, category, categories, tag, tags, stock, rating, review_count, size, brands(name)"
+
+const PRODUCT_FULL_SELECT = "*, brands(name)"
+
+/** Default page size for unbounded storefront list queries. */
+const DEFAULT_STOREFRONT_LIMIT = 96
 
 export type BrandStorefrontSummary = {
   id: string
@@ -178,7 +189,13 @@ function filterMock(q: ProductQuery): Product[] {
   }
 
   const offset = q.offset ?? 0
-  if (q.limit != null) return list.slice(offset, offset + q.limit)
+  const limit =
+    q.limit != null
+      ? q.limit
+      : q.includeUnpublished
+        ? undefined
+        : DEFAULT_STOREFRONT_LIMIT
+  if (limit != null) return list.slice(offset, offset + limit)
   if (offset > 0) return list.slice(offset)
   return list
 }
@@ -186,9 +203,12 @@ function filterMock(q: ProductQuery): Product[] {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyProductFilters(query: any, q: ProductQuery) {
   if (q.category && q.category !== "All") {
-    const cat = q.category.trim().replace(/"/g, '\\"')
-    // Array match after migration 024; legacy single `category` column as fallback
-    query = query.or(`categories.cs.{"${cat}"},category.eq."${cat}"`)
+    const cat = q.category.trim()
+    // JSON.stringify quotes the value so & and spaces are safe once the client URL-encodes.
+    // Match multi-category array OR legacy single category text.
+    query = query.or(
+      `categories.cs.{${JSON.stringify(cat)}},category.eq.${JSON.stringify(cat)}`,
+    )
   }
   if (q.brand && q.brand !== "All") {
     query = query.eq("brand_name", q.brand)
@@ -261,9 +281,10 @@ export async function queryProducts(q: ProductQuery = {}): Promise<Product[]> {
   const supabase = getReadClient()
   if (!supabase) return filterMock(q)
 
+  const useFull = q.fields === "full" || q.includeUnpublished
   let query = supabase
     .from("products")
-    .select("*, brands(name)")
+    .select(useFull ? PRODUCT_FULL_SELECT : PRODUCT_CARD_SELECT)
 
   if (!q.includeUnpublished) {
     query = query.eq("is_published", true)
@@ -272,9 +293,16 @@ export async function queryProducts(q: ProductQuery = {}): Promise<Product[]> {
   query = applyProductFilters(query, q)
   query = applyProductSort(query, q.sort)
 
-  if (q.limit != null) {
+  const limit =
+    q.limit != null
+      ? q.limit
+      : q.includeUnpublished
+        ? undefined
+        : DEFAULT_STOREFRONT_LIMIT
+
+  if (limit != null) {
     const from = q.offset ?? 0
-    query = query.range(from, from + q.limit - 1)
+    query = query.range(from, from + limit - 1)
   } else if (q.offset != null && q.offset > 0) {
     query = query.range(q.offset, q.offset + 9999)
   }
@@ -393,6 +421,31 @@ export async function getProductById(id: string): Promise<Product | null> {
     return null
   }
   return data ? rowToProduct(data) : null
+}
+
+/** Batch product fetch by ids (published only). Preserves no particular order. */
+export async function getProductsByIds(ids: string[]): Promise<Product[]> {
+  const unique = [...new Set(ids.filter(Boolean))]
+  if (!unique.length) return []
+
+  const supabase = getReadClient()
+  if (!supabase) {
+    return unique
+      .map(id => mockProducts.find(p => p.id === id))
+      .filter((p): p is Product => Boolean(p))
+  }
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_CARD_SELECT)
+    .in("id", unique)
+    .eq("is_published", true)
+
+  if (error) {
+    console.error("[products] getProductsByIds:", error.message)
+    return []
+  }
+  return (data ?? []).map(rowToProduct)
 }
 
 export async function getProductIds(): Promise<string[]> {
@@ -543,36 +596,42 @@ export async function getBrandStorefrontSummaries(): Promise<BrandStorefrontSumm
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  const summaries = await Promise.all(
-    brands.map(async brand => {
-      const { data, count, error } = await supabase
-        .from("products")
-        .select("name", { count: "exact" })
-        .eq("is_published", true)
-        .eq("brand_name", brand.name)
-        .order("rating", { ascending: false })
-        .limit(3)
+  // Single catalog pass — avoid one query per brand
+  const { data: rows, error } = await supabase
+    .from("products")
+    .select("name, brand_name, rating")
+    .eq("is_published", true)
+    .order("rating", { ascending: false })
 
-      if (error) {
-        console.error("[products] getBrandStorefrontSummaries:", error.message)
-        return null
-      }
+  if (error) {
+    console.error("[products] getBrandStorefrontSummaries:", error.message)
+    return []
+  }
 
-      const productCount = count ?? 0
-      if (productCount === 0) return null
+  const byBrand = new Map<string, { count: number; samples: string[] }>()
+  for (const row of rows ?? []) {
+    const name = String((row as { brand_name?: string }).brand_name ?? "").trim()
+    if (!name) continue
+    const entry = byBrand.get(name) ?? { count: 0, samples: [] }
+    entry.count += 1
+    if (entry.samples.length < 3) {
+      entry.samples.push(String((row as { name?: string }).name ?? ""))
+    }
+    byBrand.set(name, entry)
+  }
 
+  return brands
+    .map(brand => {
+      const entry = byBrand.get(brand.name)
+      if (!entry || entry.count === 0) return null
       return {
         id: brand.id,
         name: brand.name,
         tagline: brand.tagline,
-        productCount,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        sampleNames: (data ?? []).map((r: any) => r.name as string),
+        productCount: entry.count,
+        sampleNames: entry.samples.filter(Boolean),
       } satisfies BrandStorefrontSummary
-    }),
-  )
-
-  return summaries
+    })
     .filter((s): s is BrandStorefrontSummary => s != null)
     .sort((a, b) => a.name.localeCompare(b.name))
 }

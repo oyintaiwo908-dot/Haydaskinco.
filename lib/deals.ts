@@ -81,7 +81,14 @@ export function dealAsProduct(deal: Deal): Product {
     image: deal.image || "/product-bundle.png",
     images: deal.image ? [deal.image] : ["/product-bundle.png"],
     category: "bundle",
-    tag: deal.badge?.trim() || "Sale",
+    tag: (() => {
+      const badge = deal.badge?.trim()
+      const allowed = ["Bestseller", "New", "Sale", "Low Stock"] as const
+      if (badge && (allowed as readonly string[]).includes(badge)) {
+        return badge as (typeof allowed)[number]
+      }
+      return "Sale"
+    })(),
     benefits: deal.items.map(i =>
       i.variantLabel || i.size ? `${i.name} (${i.variantLabel || i.size})` : i.name,
     ),
