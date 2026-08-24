@@ -1,18 +1,9 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
+import { allowMockCheckout, isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
 import { fulfillPaidOrder, releaseOrderStock } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
-
-/** Dev-only mock fulfill when Paystack secret is absent. Never honor client mock in prod / with keys. */
-function allowDevMockFulfill() {
-  return (
-    !isPaystackConfigured() &&
-    process.env.NODE_ENV !== "production" &&
-    process.env.ALLOW_MOCK_CHECKOUT !== "false"
-  )
-}
 
 export async function POST(request: Request) {
   try {
@@ -104,7 +95,7 @@ export async function POST(request: Request) {
       })
     }
 
-    if (!allowDevMockFulfill()) {
+    if (!allowMockCheckout()) {
       return NextResponse.json(
         { ok: false, error: "Payments are not configured." },
         { status: 503 },

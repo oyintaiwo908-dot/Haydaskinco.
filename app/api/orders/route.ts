@@ -5,6 +5,7 @@ import {
   generateOrderReference,
   initializeTransaction,
   isPaystackConfigured,
+  allowMockCheckout,
 } from "@/lib/paystack"
 import {
   calculateUnitPrice,
@@ -452,14 +453,8 @@ export async function POST(request: Request) {
     const siteUrl = resolveCheckoutOrigin(request)
     const callbackUrl = `${siteUrl}/checkout/callback`
 
-    // Mock / offline path — only when Paystack is unset and not production
-    if (!isPaystackConfigured()) {
-      if (process.env.NODE_ENV === "production") {
-        return NextResponse.json(
-          { error: "Payments are not configured." },
-          { status: 503 },
-        )
-      }
+    // Mock / offline path — only when Paystack secret is unset (never if keys are set)
+    if (allowMockCheckout()) {
       return NextResponse.json({
         mock: true,
         orderId: inserted.id,
@@ -467,6 +462,13 @@ export async function POST(request: Request) {
         authorization_url: `${siteUrl}/checkout/callback?reference=${encodeURIComponent(reference)}&mock=1`,
         total,
       })
+    }
+
+    if (!isPaystackConfigured()) {
+      return NextResponse.json(
+        { error: "Payments are not configured." },
+        { status: 503 },
+      )
     }
 
     const paystack = await initializeTransaction({

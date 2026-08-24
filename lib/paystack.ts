@@ -11,7 +11,18 @@ export type PaystackInitResult = {
 }
 
 export function isPaystackConfigured() {
-  return Boolean(process.env.PAYSTACK_SECRET_KEY)
+  return Boolean(process.env.PAYSTACK_SECRET_KEY?.trim())
+}
+
+/**
+ * Dev-only offline checkout. Never in production.
+ * Never when Paystack secret is set — comment out PAYSTACK_* for local mock.
+ * Set ALLOW_MOCK_CHECKOUT=false to force 503 instead of mock when keys are absent.
+ */
+export function allowMockCheckout() {
+  if (process.env.NODE_ENV === "production") return false
+  if (isPaystackConfigured()) return false
+  return process.env.ALLOW_MOCK_CHECKOUT !== "false"
 }
 
 /** Amount in NGN → kobo integer for Paystack */
