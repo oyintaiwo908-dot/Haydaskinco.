@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { sendRewardPromo } from "@/lib/email/send"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`email-reward:${ip}`, 5, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const promoCode = typeof body.promoCode === "string" ? body.promoCode.trim() : ""
     const discountNgn = Number(body.discountNgn) || 0
@@ -22,6 +27,22 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
     if (!user?.email) {
       return NextResponse.json({ error: "Sign in required." }, { status: 401 })
+    }
+
+    // Only email codes the signed-in user actually redeemed
+    const { data: redemption, error: redemptionError } = await supabase
+      .from("reward_redemptions")
+      .select("id, promo_code")
+      .eq("user_id", user.id)
+      .eq("promo_code", promoCode)
+      .maybeSingle()
+
+    if (redemptionError) {
+      console.error("[email/reward] redemption:", redemptionError.message)
+      return NextResponse.json({ error: "Could not verify reward." }, { status: 500 })
+    }
+    if (!redemption) {
+      return NextResponse.json({ error: "Reward code not found for this account." }, { status: 403 })
     }
 
     const name =

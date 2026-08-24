@@ -3,11 +3,16 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NEWSLETTER_PROMO_CODE } from "@/lib/email/client"
 import { sendNewsletterWelcome } from "@/lib/email/send"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`newsletter:${ip}`, 8, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
     const source = typeof body.source === "string" ? body.source.slice(0, 40) : "site"

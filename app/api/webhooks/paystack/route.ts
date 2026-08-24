@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
 import { verifyPaystackSignature } from "@/lib/paystack"
 import { fulfillPaidOrder } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
@@ -22,9 +21,9 @@ export async function POST(request: Request) {
   }
 
   if (event.event === "charge.success" && event.data?.reference) {
-    const db = createAdminClient() ?? (await createClient())
+    const db = createAdminClient()
     if (!db) {
-      console.error("[webhook] Supabase not configured")
+      console.error("[webhook] service role not configured")
       return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
     }
     const result = await fulfillPaidOrder(db, event.data.reference)

@@ -13,6 +13,8 @@ import {
 } from "@/lib/products"
 import { bareDealId, dealSalePrice, isDealCartId } from "@/lib/deals"
 import type { CheckoutItem } from "@/lib/supabase/orders"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { getSiteUrl } from "@/lib/site"
 
 type Body = {
   items: CheckoutItem[]
@@ -44,25 +46,54 @@ type PricedLine = {
   quantity: number
 }
 
+function isLocalDevHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+}
+
 /** Where Paystack should send the customer after payment. */
 function resolveCheckoutOrigin(request: Request): string {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "")
+  const site = getSiteUrl().replace(/\/$/, "")
+  const candidates: string[] = []
+
   const origin = request.headers.get("origin")
   if (origin && /^https?:\/\//i.test(origin)) {
-    return origin.replace(/\/$/, "")
+    candidates.push(origin.replace(/\/$/, ""))
   }
   const referer = request.headers.get("referer")
   if (referer) {
     try {
-      return new URL(referer).origin
+      candidates.push(new URL(referer).origin)
     } catch {
       /* ignore */
     }
   }
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host")
   const proto = request.headers.get("x-forwarded-proto") ?? "http"
-  if (host) return `${proto}://${host}`.replace(/\/$/, "")
-  return fromEnv ?? "http://localhost:3000"
+  if (host) candidates.push(`${proto}://${host}`.replace(/\/$/, ""))
+
+  const allowed = new Set<string>([site])
+  try {
+    const siteHost = new URL(site).hostname
+    if (isLocalDevHost(siteHost) || process.env.NODE_ENV !== "production") {
+      allowed.add("http://localhost:3000")
+      allowed.add("http://127.0.0.1:3000")
+    }
+  } catch {
+    /* ignore */
+  }
+
+  for (const c of candidates) {
+    try {
+      const u = new URL(c)
+      if (allowed.has(u.origin)) return u.origin
+      // Same host as configured site (http/https drift)
+      if (u.hostname === new URL(site).hostname) return u.origin
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return site
 }
 
 function allowedSkuPrices(
@@ -81,6 +112,10 @@ function allowedSkuPrices(
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`orders-create:${ip}`, 10, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = (await request.json()) as Body
     const items = body.items ?? []
     const shipping = body.shipping
@@ -359,13 +394,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // Prefer the browser that started checkout (localhost vs production),
-    // not a stale NEXT_PUBLIC_SITE_URL — wrong host breaks pay → verify → cart clear.
+    // Allowlist checkout return host (env site URL + local only in non-prod).
     const siteUrl = resolveCheckoutOrigin(request)
     const callbackUrl = `${siteUrl}/checkout/callback`
 
-    // Mock / offline path — no Paystack secret
+    // Mock / offline path — only when Paystack is unset and not production
     if (!isPaystackConfigured()) {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { error: "Payments are not configured." },
+          { status: 503 },
+        )
+      }
       return NextResponse.json({
         mock: true,
         orderId: inserted.id,

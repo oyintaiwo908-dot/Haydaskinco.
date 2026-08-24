@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 const FALLBACK: Record<string, number> = {
   HAYDA10: 10,
@@ -10,6 +11,10 @@ const FALLBACK: Record<string, number> = {
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`promo:${ip}`, 30, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const code = String(body.code ?? "").trim().toUpperCase()
     if (!code) {

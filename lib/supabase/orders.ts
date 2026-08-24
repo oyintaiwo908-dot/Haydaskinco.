@@ -388,7 +388,10 @@ export async function updateOrderStatus(
   return null
 }
 
-/** Mark order paid + decrement stock + bump promo via security-definer RPC. */
+/**
+ * Mark order paid + decrement stock + bump promo via security-definer RPC.
+ * Requires a service-role client (migration 026 revoked anon/authenticated execute).
+ */
 export async function fulfillPaidOrder(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any,

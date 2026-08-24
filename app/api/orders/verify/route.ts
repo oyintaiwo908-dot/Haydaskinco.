@@ -1,24 +1,40 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
 import { isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
 import { fulfillPaidOrder } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+
+/** Dev-only mock fulfill when Paystack secret is absent. Never honor client mock in prod / with keys. */
+function allowDevMockFulfill() {
+  return (
+    !isPaystackConfigured() &&
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_MOCK_CHECKOUT !== "false"
+  )
+}
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`orders-verify:${ip}`, 20, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const reference = typeof body.reference === "string" ? body.reference.trim() : ""
-    const mock = Boolean(body.mock)
+    const clientMock = Boolean(body.mock)
 
     if (!reference) {
       return NextResponse.json({ error: "Missing reference." }, { status: 400 })
     }
 
-    const admin = createAdminClient()
-    const db = admin ?? (await createClient())
+    // Fulfillment RPC is service_role-only after migration 026
+    const db = createAdminClient()
     if (!db) {
-      return NextResponse.json({ error: "Database not configured." }, { status: 503 })
+      return NextResponse.json(
+        { error: "Server misconfigured (service role required)." },
+        { status: 503 },
+      )
     }
 
     const { data: order, error: orderError } = await db
@@ -43,59 +59,70 @@ export async function POST(request: Request) {
       })
     }
 
-    // Local mock checkout (no Paystack keys)
-    if (mock || !isPaystackConfigured()) {
-      const result = await fulfillPaidOrder(db, reference)
-      if (result.ok) {
-        void sendOrderConfirmationIfNew(reference, result.message)
+    // Client `mock: true` is ignored whenever Paystack is configured
+    if (isPaystackConfigured()) {
+      if (clientMock) {
+        console.warn(`[orders/verify] ignoring client mock for ${reference} (Paystack configured)`)
       }
+
+      const tx = await verifyTransaction(reference)
+      if (tx.status !== "success") {
+        await db
+          .from("orders")
+          .update({ payment_status: "failed", updated_at: new Date().toISOString() })
+          .eq("reference", reference)
+        return NextResponse.json(
+          { ok: false, error: `Payment not successful (${tx.status}).` },
+          { status: 400 },
+        )
+      }
+
+      const expectedKobo = toKobo(Number(order.total))
+      if (typeof tx.amount === "number" && tx.amount !== expectedKobo) {
+        console.error(
+          `[orders/verify] amount mismatch ref=${reference} paystack=${tx.amount} expected=${expectedKobo}`,
+        )
+        return NextResponse.json(
+          { ok: false, error: "Paid amount does not match order total." },
+          { status: 400 },
+        )
+      }
+
+      const result = await fulfillPaidOrder(db, reference)
+      if (!result.ok) {
+        console.error("[orders/verify] fulfill:", result.message)
+        return NextResponse.json(
+          { ok: false, error: result.message ?? "Could not complete order." },
+          { status: 500 },
+        )
+      }
+
+      void sendOrderConfirmationIfNew(reference, result.message)
       return NextResponse.json({
-        ok: result.ok,
+        ok: true,
         reference,
-        mock: true,
-        message: result.message ?? (result.ok ? "Payment confirmed." : "Could not complete order."),
-        error: result.ok ? undefined : result.message,
+        message: result.message ?? "Payment confirmed.",
       })
     }
 
-    const tx = await verifyTransaction(reference)
-    if (tx.status !== "success") {
-      await db
-        .from("orders")
-        .update({ payment_status: "failed", updated_at: new Date().toISOString() })
-        .eq("reference", reference)
+    if (!allowDevMockFulfill()) {
       return NextResponse.json(
-        { ok: false, error: `Payment not successful (${tx.status}).` },
-        { status: 400 },
+        { ok: false, error: "Payments are not configured." },
+        { status: 503 },
       )
     }
 
-    const expectedKobo = toKobo(Number(order.total))
-    if (typeof tx.amount === "number" && tx.amount !== expectedKobo) {
-      console.error(
-        `[orders/verify] amount mismatch ref=${reference} paystack=${tx.amount} expected=${expectedKobo}`,
-      )
-      return NextResponse.json(
-        { ok: false, error: "Paid amount does not match order total." },
-        { status: 400 },
-      )
-    }
-
+    // Local / test: no Paystack secret — fulfill only in non-production
     const result = await fulfillPaidOrder(db, reference)
-    if (!result.ok) {
-      console.error("[orders/verify] fulfill:", result.message)
-      return NextResponse.json(
-        { ok: false, error: result.message ?? "Could not complete order." },
-        { status: 500 },
-      )
+    if (result.ok) {
+      void sendOrderConfirmationIfNew(reference, result.message)
     }
-
-    void sendOrderConfirmationIfNew(reference, result.message)
-
     return NextResponse.json({
-      ok: true,
+      ok: result.ok,
       reference,
-      message: result.message ?? "Payment confirmed.",
+      mock: true,
+      message: result.message ?? (result.ok ? "Payment confirmed." : "Could not complete order."),
+      error: result.ok ? undefined : result.message,
     })
   } catch (err) {
     console.error("[orders/verify]", err)

@@ -2,11 +2,16 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWholesaleNotify } from "@/lib/email/send"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`wholesale:${ip}`, 5, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const name = typeof body.name === "string" ? body.name.trim() : ""
     const business = typeof body.business === "string" ? body.business.trim() : ""
