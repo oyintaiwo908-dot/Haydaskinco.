@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
-import { fulfillPaidOrder } from "@/lib/supabase/orders"
+import { fulfillPaidOrder, releaseOrderStock } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
@@ -17,7 +17,7 @@ function allowDevMockFulfill() {
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request)
-    const limited = rateLimit(`orders-verify:${ip}`, 20, 60_000)
+    const limited = await rateLimit(`orders-verify:${ip}`, 20, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
     const body = await request.json()
@@ -28,7 +28,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing reference." }, { status: 400 })
     }
 
-    // Fulfillment RPC is service_role-only after migration 026
     const db = createAdminClient()
     if (!db) {
       return NextResponse.json(
@@ -59,7 +58,6 @@ export async function POST(request: Request) {
       })
     }
 
-    // Client `mock: true` is ignored whenever Paystack is configured
     if (isPaystackConfigured()) {
       if (clientMock) {
         console.warn(`[orders/verify] ignoring client mock for ${reference} (Paystack configured)`)
@@ -71,6 +69,7 @@ export async function POST(request: Request) {
           .from("orders")
           .update({ payment_status: "failed", updated_at: new Date().toISOString() })
           .eq("reference", reference)
+        void releaseOrderStock(db, reference)
         return NextResponse.json(
           { ok: false, error: `Payment not successful (${tx.status}).` },
           { status: 400 },
@@ -112,7 +111,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Local / test: no Paystack secret — fulfill only in non-production
     const result = await fulfillPaidOrder(db, reference)
     if (result.ok) {
       void sendOrderConfirmationIfNew(reference, result.message)

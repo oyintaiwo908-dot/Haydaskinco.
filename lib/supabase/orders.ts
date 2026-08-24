@@ -391,6 +391,7 @@ export async function updateOrderStatus(
 /**
  * Mark order paid + decrement stock + bump promo via security-definer RPC.
  * Requires a service-role client (migration 026 revoked anon/authenticated execute).
+ * When stock was reserved at create (028), complete_order_payment skips a second decrement.
  */
 export async function fulfillPaidOrder(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -401,6 +402,38 @@ export async function fulfillPaidOrder(
     p_reference: reference,
   })
 
+  if (error) return { ok: false, message: error.message }
+  if (data && typeof data === "object" && "ok" in data) {
+    return { ok: Boolean(data.ok), message: data.message as string | undefined }
+  }
+  return { ok: true }
+}
+
+/** Hold inventory at checkout (service-role RPC). */
+export async function reserveOrderStock(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  reference: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await client.rpc("reserve_order_stock", {
+    p_reference: reference,
+  })
+  if (error) return { ok: false, message: error.message }
+  if (data && typeof data === "object" && "ok" in data) {
+    return { ok: Boolean(data.ok), message: data.message as string | undefined }
+  }
+  return { ok: true }
+}
+
+/** Release hold on failed/cancelled unpaid orders (service-role RPC). */
+export async function releaseOrderStock(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  reference: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await client.rpc("release_order_stock", {
+    p_reference: reference,
+  })
   if (error) return { ok: false, message: error.message }
   if (data && typeof data === "object" && "ok" in data) {
     return { ok: Boolean(data.ok), message: data.message as string | undefined }

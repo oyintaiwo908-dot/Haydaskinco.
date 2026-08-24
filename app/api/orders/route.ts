@@ -12,7 +12,7 @@ import {
   normalizePriceTiers,
 } from "@/lib/products"
 import { bareDealId, dealSalePrice, isDealCartId } from "@/lib/deals"
-import type { CheckoutItem } from "@/lib/supabase/orders"
+import { releaseOrderStock, reserveOrderStock, type CheckoutItem } from "@/lib/supabase/orders"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 import { getSiteUrl } from "@/lib/site"
 
@@ -113,7 +113,7 @@ function allowedSkuPrices(
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request)
-    const limited = rateLimit(`orders-create:${ip}`, 10, 60_000)
+    const limited = await rateLimit(`orders-create:${ip}`, 10, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
     const body = (await request.json()) as Body
@@ -435,6 +435,19 @@ export async function POST(request: Request) {
       )
     }
 
+    const reserved = await reserveOrderStock(supabase, reference)
+    if (!reserved.ok) {
+      console.error("[orders] reserve:", reserved.message)
+      await supabase.from("orders").delete().eq("reference", reference)
+      return NextResponse.json(
+        {
+          error: reserved.message ?? "Could not reserve stock for this order.",
+          stockIssues: [reserved.message ?? "Insufficient stock"],
+        },
+        { status: 409 },
+      )
+    }
+
     // Allowlist checkout return host (env site URL + local only in non-prod).
     const siteUrl = resolveCheckoutOrigin(request)
     const callbackUrl = `${siteUrl}/checkout/callback`
@@ -468,6 +481,10 @@ export async function POST(request: Request) {
           { display_name: "Order", variable_name: "order_ref", value: reference },
         ],
       },
+    }).catch(async (err) => {
+      console.error("[orders] Paystack init:", err)
+      await releaseOrderStock(supabase, reference)
+      throw err
     })
 
     await supabase

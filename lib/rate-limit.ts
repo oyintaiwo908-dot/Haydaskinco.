@@ -1,12 +1,14 @@
 /**
- * Lightweight in-memory rate limiter for API routes.
- * Best-effort on serverless (per-instance); still blocks obvious spam bursts.
+ * Rate limiter for API routes.
+ * Uses Upstash Redis when UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN are set;
+ * otherwise falls back to an in-memory Map (fine for single-instance / local).
  */
+
+type LimitResult = { ok: true } | { ok: false; retryAfterSec: number }
 
 type Bucket = { count: number; resetAt: number }
 
 const buckets = new Map<string, Bucket>()
-
 const MAX_KEYS = 5_000
 
 function prune(now: number) {
@@ -15,7 +17,6 @@ function prune(now: number) {
     if (b.resetAt <= now) buckets.delete(key)
   }
   if (buckets.size >= MAX_KEYS) {
-    // Drop oldest half if still full
     let i = 0
     for (const key of buckets.keys()) {
       buckets.delete(key)
@@ -24,20 +25,7 @@ function prune(now: number) {
   }
 }
 
-export function clientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for")
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim()
-    if (first) return first
-  }
-  return request.headers.get("x-real-ip")?.trim() || "unknown"
-}
-
-export function rateLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): { ok: true } | { ok: false; retryAfterSec: number } {
+function memoryRateLimit(key: string, limit: number, windowMs: number): LimitResult {
   const now = Date.now()
   prune(now)
   const existing = buckets.get(key)
@@ -53,6 +41,53 @@ export function rateLimit(
   }
   existing.count += 1
   return { ok: true }
+}
+
+function upstashConfigured() {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL?.trim() &&
+      process.env.UPSTASH_REDIS_REST_TOKEN?.trim(),
+  )
+}
+
+export function clientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for")
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim()
+    if (first) return first
+  }
+  return request.headers.get("x-real-ip")?.trim() || "unknown"
+}
+
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<LimitResult> {
+  if (upstashConfigured()) {
+    try {
+      const { Ratelimit } = await import("@upstash/ratelimit")
+      const { Redis } = await import("@upstash/redis")
+      const redis = Redis.fromEnv()
+      const windowSec = Math.max(1, Math.ceil(windowMs / 1000))
+      const limiter = new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
+        prefix: "hayda-rl",
+        analytics: false,
+      })
+      const result = await limiter.limit(key)
+      if (result.success) return { ok: true }
+      const retryAfterSec = Math.max(
+        1,
+        Math.ceil((result.reset - Date.now()) / 1000),
+      )
+      return { ok: false, retryAfterSec }
+    } catch (err) {
+      console.error("[rate-limit] Upstash failed, using memory:", err)
+    }
+  }
+  return memoryRateLimit(key, limit, windowMs)
 }
 
 export function rateLimitResponse(retryAfterSec: number) {

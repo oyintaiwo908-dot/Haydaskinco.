@@ -105,7 +105,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       // Clamp qty when limited (keep OOS lines so the user can see / remove them)
       const nextItems = current.map(item => {
-        if (item.id.startsWith("deal__")) return item
         const status = statusById[item.id]
         if (!status) return item
         let nextQty = item.quantity
@@ -254,9 +253,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         : current.stock > 0
           ? current.stock
           : quantity
-      const capped = id.startsWith("deal__")
-        ? quantity
-        : Math.min(quantity, Math.max(moq, max || quantity))
+      const capped = Math.min(quantity, Math.max(moq, max || quantity))
 
       const basePrice = current.listPrice ?? current.price
       const skuPrice = current.skuPrice ?? basePrice

@@ -10,7 +10,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request)
-    const limited = rateLimit(`newsletter:${ip}`, 8, 60_000)
+    const limited = await rateLimit(`newsletter:${ip}`, 8, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
     const body = await request.json()

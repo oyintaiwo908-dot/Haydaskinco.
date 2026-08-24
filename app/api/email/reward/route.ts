@@ -6,7 +6,7 @@ import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request)
-    const limited = rateLimit(`email-reward:${ip}`, 5, 60_000)
+    const limited = await rateLimit(`email-reward:${ip}`, 5, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
     const body = await request.json()
