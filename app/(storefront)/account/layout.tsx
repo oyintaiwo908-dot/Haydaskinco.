@@ -23,16 +23,14 @@ const AUTH_PATHS = ["/login", "/register"]
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { session, signOut } = useUserAuth()
+  const { session, ready, signOut } = useUserAuth()
   const isAuthPage = AUTH_PATHS.some(p => pathname === p)
 
-  // Guard: redirect to login if not signed in and on a protected page
+  // Guard: only redirect after auth has resolved — avoids /account → /login flash on reload
   useEffect(() => {
-    if (!isAuthPage && session === null) {
-      // session is null after mount check — not signed in
-      router.replace("/login")
-    }
-  }, [session, isAuthPage, router])
+    if (!ready || isAuthPage) return
+    if (!session) router.replace("/login")
+  }, [ready, session, isAuthPage, router])
 
   function handleSignOut() {
     signOut()
@@ -41,8 +39,17 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
 
   if (isAuthPage) return <>{children}</>
 
-  // Show nothing while checking auth (session is null before mount resolves)
-  if (session === null) return null
+  if (!ready || session === null) {
+    return (
+      <div className="mx-auto max-w-7xl px-5 py-14 lg:px-8">
+        <div className="mb-8 h-16 max-w-sm animate-pulse rounded-sm bg-muted" />
+        <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+          <div className="hidden h-64 w-52 shrink-0 animate-pulse rounded-sm bg-muted lg:block" />
+          <div className="h-48 flex-1 animate-pulse rounded-sm bg-muted" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 md:py-14 lg:px-8">

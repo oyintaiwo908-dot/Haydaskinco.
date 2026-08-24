@@ -50,12 +50,13 @@ function writeLocal(items: Product[]) {
 }
 
 export function FavoritesProvider({ children }: { children: ReactNode }) {
-  const { session } = useUserAuth()
+  const { session, ready } = useUserAuth()
   const [favorites, setFavorites] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
+    if (!ready) return
     let cancelled = false
     ;(async () => {
       setLoading(true)
@@ -88,7 +89,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
       }
     })()
     return () => { cancelled = true }
-  }, [session])
+  }, [session, ready])
 
   useEffect(() => {
     if (!hydrated || session) return

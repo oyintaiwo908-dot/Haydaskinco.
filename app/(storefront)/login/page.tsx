@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { session, signIn } = useUserAuth()
+  const { session, ready, signIn } = useUserAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -19,10 +19,10 @@ export default function LoginPage() {
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [resendSent, setResendSent] = useState(false)
 
-  // Already signed in → go to account
+  // Already signed in → go to account (wait for auth hydrate)
   useEffect(() => {
-    if (session) router.replace("/account")
-  }, [session, router])
+    if (ready && session) router.replace("/account")
+  }, [ready, session, router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

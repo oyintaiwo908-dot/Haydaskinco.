@@ -14,6 +14,8 @@ import {
 /* ─── Context ────────────────────────────────────────────────── */
 type UserAuthCtx = {
   session: UserSession | null
+  /** False until the first getSession() (or mock hydrate) finishes */
+  ready: boolean
   /** Returns error string on failure, null on success */
   signIn: (email: string, password: string) => Promise<string | null>
   /** Returns error string on failure, null on success */
@@ -23,6 +25,7 @@ type UserAuthCtx = {
 
 const UserAuthContext = createContext<UserAuthCtx>({
   session: null,
+  ready: false,
   signIn: async () => "Not initialised",
   signUp: async () => "Not initialised",
   signOut: () => {},
@@ -35,7 +38,7 @@ export function useUserAuth() {
 /* ─── Provider ───────────────────────────────────────────────── */
 export function UserAuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null)
-  const [mounted, setMounted] = useState(false)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -43,7 +46,7 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) {
       // Dev-only mock mode (no Supabase env vars)
       setSession(getUserSession())
-      setMounted(true)
+      setReady(true)
       return
     }
 
@@ -73,8 +76,10 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       if (s?.user) {
         setSession(await buildSession(s.user))
+      } else {
+        setSession(null)
       }
-      setMounted(true)
+      setReady(true)
     })
 
     const {
@@ -186,7 +191,7 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <UserAuthContext.Provider value={{ session: mounted ? session : null, signIn, signUp, signOut }}>
+    <UserAuthContext.Provider value={{ session, ready, signIn, signUp, signOut }}>
       {children}
     </UserAuthContext.Provider>
   )
