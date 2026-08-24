@@ -25,6 +25,9 @@ export async function POST(request: Request) {
     const server = admin ?? (await createClient())
 
     if (!server) {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json({ valid: false, message: "Could not validate promo." }, { status: 503 })
+      }
       const pct = FALLBACK[code]
       if (!pct) {
         return NextResponse.json({ valid: false, message: "Invalid promo code." })

@@ -39,7 +39,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createAdminBrowserClient()
 
     if (!supabase) {
-      // Dev-only mock mode (no Supabase env vars)
+      // Dev-only mock — never in production
+      if (process.env.NODE_ENV === "production") {
+        setChecked(true)
+        router.replace("/admin/login")
+        return
+      }
       const s = getAdminSession()
       setSession(s)
       setChecked(true)
@@ -58,14 +63,14 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Verify role in profiles table
+      // Verify role + suspension in profiles table
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, is_suspended")
         .eq("id", s.user.id)
         .single()
 
-      if (!profile || profile.role !== "admin") {
+      if (!profile || profile.role !== "admin" || profile.is_suspended) {
         await supabase.auth.signOut()
         setChecked(true)
         router.replace("/admin/login")
@@ -87,11 +92,11 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       // Re-check role on auth change
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, is_suspended")
         .eq("id", s.user.id)
         .single()
 
-      if (!profile || profile.role !== "admin") {
+      if (!profile || profile.role !== "admin" || profile.is_suspended) {
         await supabase.auth.signOut()
         setSession(null)
         return
@@ -107,7 +112,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createAdminBrowserClient()
 
     if (!supabase) {
-      // Mock path
+      if (process.env.NODE_ENV === "production") {
+        return "Admin auth is not configured."
+      }
+      // Mock path (local only)
       await new Promise(r => setTimeout(r, 800))
       if (email === "admin@haydaskinco.com" && password === "password") {
         const s: AdminSession = { email, name: "Admin", signedInAt: Date.now() }
@@ -122,16 +130,20 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return error.message
 
-    // Check admin role
+    // Check admin role + suspension
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_suspended")
       .eq("id", data.user.id)
       .single()
 
     if (!profile || profile.role !== "admin") {
       await supabase.auth.signOut()
       return "Access denied. This account does not have admin privileges."
+    }
+    if (profile.is_suspended) {
+      await supabase.auth.signOut()
+      return "This account has been suspended."
     }
 
     setSession(supabaseSessionToAdminSession(data.session))

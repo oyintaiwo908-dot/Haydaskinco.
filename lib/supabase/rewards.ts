@@ -156,9 +156,6 @@ export async function redeemReward(rewardId: string): Promise<{
 
   const { data, error } = await supabase.rpc("redeem_reward", {
     p_reward_id: reward.id,
-    p_points_cost: reward.cost,
-    p_discount_ngn: reward.discountNgn,
-    p_label: reward.label,
   })
 
   if (error) return { ok: false, message: error.message }

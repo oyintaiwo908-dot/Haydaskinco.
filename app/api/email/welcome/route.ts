@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { sendWelcome } from "@/lib/email/send"
+import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -10,6 +11,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  */
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request)
+    const limited = rateLimit(`email-welcome:${ip}`, 5, 60_000)
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
+
     const body = await request.json()
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
     const name = typeof body.name === "string" ? body.name.trim() : "there"

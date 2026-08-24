@@ -52,12 +52,15 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
 
     async function buildSession(user: import("@supabase/supabase-js").User) {
       const base = supabaseUserToUserSession(user)
-      // Hydrate with accurate profile row (name may have been updated after sign-up)
       const { data: profile } = await supabase!
         .from("profiles")
-        .select("full_name, first_name, phone")
+        .select("full_name, first_name, phone, is_suspended")
         .eq("id", user.id)
         .single()
+      if (profile?.is_suspended) {
+        await supabase!.auth.signOut()
+        return null
+      }
       if (!profile) return base
       const firstName = profile.first_name ?? extractFirstName(profile.full_name ?? user.email ?? "")
       return {
@@ -103,12 +106,23 @@ export function UserAuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     clearUserSession()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       if ((error as { code?: string }).code === "email_not_confirmed") {
         return "email_not_confirmed"
       }
       return error.message
+    }
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_suspended")
+        .eq("id", data.user.id)
+        .maybeSingle()
+      if (profile?.is_suspended) {
+        await supabase.auth.signOut()
+        return "This account has been suspended."
+      }
     }
     // Attach guest checkouts that used this email
     void supabase.rpc("claim_guest_orders")

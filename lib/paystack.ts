@@ -89,9 +89,16 @@ export async function verifyPaystackSignature(
   const secret = process.env.PAYSTACK_SECRET_KEY
   if (!secret || !signature) return false
 
-  const { createHmac } = await import("crypto")
+  const { createHmac, timingSafeEqual } = await import("crypto")
   const hash = createHmac("sha512", secret).update(rawBody).digest("hex")
-  return hash === signature
+  try {
+    const a = Buffer.from(hash, "utf8")
+    const b = Buffer.from(signature, "utf8")
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
 }
 
 export function generateOrderReference() {

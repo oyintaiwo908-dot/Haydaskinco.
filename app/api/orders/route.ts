@@ -128,10 +128,14 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient()
-    const supabase = admin ?? (await createClient())
-    if (!supabase) {
-      return NextResponse.json({ error: "Database not configured." }, { status: 503 })
+    // Order insert policy is service-role only (migration 027)
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Server misconfigured (service role required for checkout)." },
+        { status: 503 },
+      )
     }
+    const supabase = admin
 
     const productIds = [
       ...new Set(
@@ -149,32 +153,48 @@ export async function POST(request: Request) {
       ),
     ]
 
-    const [productsRes, dealsRes] = await Promise.all([
-      productIds.length
-        ? supabase
-            .from("products")
-            .select(
-              "id, name, price, discount_pct, price_tiers, moq, stock, is_published, image_url, category, categories, variants",
-            )
-            .in("id", productIds)
-        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      dealIds.length
-        ? supabase
-            .from("deals")
-            .select("id, title, image_url, original_price, discount_pct, price, items, is_active, brand_name")
-            .in("id", dealIds)
-        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    ])
+    const dealsRes = dealIds.length
+      ? await supabase
+          .from("deals")
+          .select("id, title, image_url, original_price, discount_pct, price, items, is_active, brand_name")
+          .in("id", dealIds)
+      : { data: [] as Record<string, unknown>[] }
 
-    const productsById = new Map(
-      (productsRes.data ?? []).map(r => [String(r.id), r as Record<string, unknown>]),
-    )
     const dealsById = new Map(
       (dealsRes.data ?? []).map(r => [String(r.id), r as Record<string, unknown>]),
     )
 
+    const componentIds: string[] = []
+    for (const deal of dealsById.values()) {
+      if (!Array.isArray(deal.items)) continue
+      for (const di of deal.items as { productId?: string }[]) {
+        if (di.productId) componentIds.push(String(di.productId))
+      }
+    }
+
+    const allProductIds = [...new Set([...productIds, ...componentIds])]
+    const productsRes = allProductIds.length
+      ? await supabase
+          .from("products")
+          .select(
+            "id, name, price, discount_pct, price_tiers, moq, stock, is_published, image_url, category, categories, variants",
+          )
+          .in("id", allProductIds)
+      : { data: [] as Record<string, unknown>[] }
+
+    const productsById = new Map(
+      (productsRes.data ?? []).map(r => [String(r.id), r as Record<string, unknown>]),
+    )
+
     const problems: string[] = []
     const pricedLines: PricedLine[] = []
+    const stockDemand = new Map<string, { need: number; name: string }>()
+
+    function addDemand(pid: string, need: number, name: string) {
+      const cur = stockDemand.get(pid)
+      if (cur) cur.need += need
+      else stockDemand.set(pid, { need, name })
+    }
 
     for (const item of items) {
       const qty = Math.max(1, Math.floor(Number(item.quantity) || 0))
@@ -189,11 +209,27 @@ export async function POST(request: Request) {
           problems.push(`${item.name || "Deal"} is no longer available`)
           continue
         }
+        const dealItems = Array.isArray(deal.items)
+          ? (deal.items as { productId?: string; name?: string; qty?: number; price?: number }[])
+          : []
+        if (!dealItems.length) {
+          problems.push(`${String(deal.title || "Deal")} has no products`)
+          continue
+        }
+        for (const di of dealItems) {
+          const cid = di.productId ? String(di.productId) : ""
+          if (!cid) continue
+          const cqty = Math.max(1, Math.floor(Number(di.qty) || 1)) * qty
+          const prow = productsById.get(cid)
+          if (!prow || prow.is_published === false) {
+            problems.push(`${di.name || cid} in ${String(deal.title || "deal")} is unavailable`)
+            continue
+          }
+          addDemand(cid, cqty, String(prow.name || di.name || cid))
+        }
         const originalPrice =
           Number(deal.original_price) ||
-          (Array.isArray(deal.items)
-            ? (deal.items as { price?: number }[]).reduce((s, i) => s + Number(i.price || 0), 0)
-            : 0)
+          dealItems.reduce((s, i) => s + Number(i.price || 0), 0)
         const discountPct = Math.min(100, Math.max(0, Number(deal.discount_pct ?? 0)))
         const salePrice = dealSalePrice({
           originalPrice,
@@ -226,10 +262,7 @@ export async function POST(request: Request) {
         problems.push(`${row.name} requires a minimum of ${moq}`)
         continue
       }
-      if (qty > stock) {
-        problems.push(`${row.name} only has ${stock} left (you requested ${qty})`)
-        continue
-      }
+      addDemand(item.productId, qty, String(row.name || item.name))
 
       const basePrice = Math.round(Number(row.price) || 0)
       const discountPct = Math.min(100, Math.max(0, Number(row.discount_pct) || 0))
@@ -259,6 +292,14 @@ export async function POST(request: Request) {
         price: unit,
         quantity: qty,
       })
+    }
+
+    for (const [pid, { need, name }] of stockDemand) {
+      const row = productsById.get(pid)
+      const available = Number(row?.stock) || 0
+      if (need > available) {
+        problems.push(`${name} only has ${available} left (you need ${need})`)
+      }
     }
 
     if (problems.length) {
