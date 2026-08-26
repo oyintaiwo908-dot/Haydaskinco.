@@ -1,6 +1,7 @@
 # HAYDA SKINCo. — Backend Integration Checklist
 
 > **Status — Updated Jul 2026:**
+>
 > - Priority 1 (Auth + DB foundation): **COMPLETE**
 > - Priority 2 (Checkout & Payments): **COMPLETE** — See `PRIORITY_2.md`
 > - Priority 3 (Customer Features): **COMPLETE** — See `PRIORITY_3.md`
@@ -24,14 +25,14 @@ Everything else depends on these two being in place first.
 
 **Files to update:**
 
-| File | Change |
-|---|---|
-| `lib/auth.ts` | Remove localStorage helpers; export Supabase client session helpers |
-| `components/user-auth-provider.tsx` | `signIn` → `supabase.auth.signInWithPassword()`, `signUp` → `supabase.auth.signUp()`, `signOut` → `supabase.auth.signOut()`, read session from `supabase.auth.getSession()` |
-| `components/admin-auth-provider.tsx` | Same pattern; add role check — only users with `role = 'admin'` in `profiles` table may proceed |
-| `app/(storefront)/login/page.tsx` | Remove demo note |
-| `app/(auth)/admin/login/page.tsx` | Remove hardcoded credential fallback |
-| `app/(storefront)/account/settings/page.tsx` | Wire "Change password" to `supabase.auth.updateUser()` |
+| File                                         | Change                                                                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/auth.ts`                                | Remove localStorage helpers; export Supabase client session helpers                                                                                                         |
+| `components/user-auth-provider.tsx`          | `signIn` → `supabase.auth.signInWithPassword()`, `signUp` → `supabase.auth.signUp()`, `signOut` → `supabase.auth.signOut()`, read session from `supabase.auth.getSession()` |
+| `components/admin-auth-provider.tsx`         | Same pattern; add role check — only users with `role = 'admin'` in `profiles` table may proceed                                                                             |
+| `app/(storefront)/login/page.tsx`            | Remove demo note                                                                                                                                                            |
+| `app/(auth)/admin/login/page.tsx`            | Remove hardcoded credential fallback                                                                                                                                        |
+| `app/(storefront)/account/settings/page.tsx` | Wire "Change password" to `supabase.auth.updateUser()`                                                                                                                      |
 
 **Database tables needed:**
 
@@ -197,6 +198,7 @@ create table deals (
 5. **Flutterwave** (alternative): identical flow using `flw-node-sdk`; swap the initialize/verify endpoints.
 
 **Environment variables needed:**
+
 ```
 NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY=pk_live_...
 PAYSTACK_SECRET_KEY=sk_live_...
@@ -337,6 +339,7 @@ create table reward_redemptions (
 ```
 
 **Earn triggers (Postgres functions):**
+
 - Order `fulfilled` → `+1 pt per ₦100` spent
 - Review submitted → `+50 pts`
 - Profile completed → `+100 pts` (one-time)
@@ -359,19 +362,20 @@ create table reward_redemptions (
 
 Every admin form currently simulates a 700 ms delay and redirects. Replace each with real API calls.
 
-| Page | Action | API call |
-|---|---|---|
-| `admin/products/new` | Create | `supabase.from('products').insert(data)` |
-| `admin/products/[id]/edit` | Update | `supabase.from('products').update(data).eq('id', id)` |
-| `admin/products/page.tsx` | Delete | `supabase.from('products').delete().eq('id', id)` |
-| `admin/journals/new` | Create | `supabase.from('journals').insert(data)` |
-| `admin/journals/[id]/edit` | Update | `supabase.from('journals').update(data).eq('id', id)` |
-| `admin/deals/new` | Create | `supabase.from('deals').insert(data)` |
-| `admin/deals/[id]/edit` | Update | `supabase.from('deals').update(data).eq('id', id)` |
-| `admin/orders/page.tsx` | Status update | `supabase.from('orders').update({ status }).eq('id', id)` |
-| `admin/users/page.tsx` | Role/status toggle | `supabase.from('profiles').update({ role / status }).eq('id', id)` |
+| Page                       | Action             | API call                                                           |
+| -------------------------- | ------------------ | ------------------------------------------------------------------ |
+| `admin/products/new`       | Create             | `supabase.from('products').insert(data)`                           |
+| `admin/products/[id]/edit` | Update             | `supabase.from('products').update(data).eq('id', id)`              |
+| `admin/products/page.tsx`  | Delete             | `supabase.from('products').delete().eq('id', id)`                  |
+| `admin/journals/new`       | Create             | `supabase.from('journals').insert(data)`                           |
+| `admin/journals/[id]/edit` | Update             | `supabase.from('journals').update(data).eq('id', id)`              |
+| `admin/deals/new`          | Create             | `supabase.from('deals').insert(data)`                              |
+| `admin/deals/[id]/edit`    | Update             | `supabase.from('deals').update(data).eq('id', id)`                 |
+| `admin/orders/page.tsx`    | Status update      | `supabase.from('orders').update({ status }).eq('id', id)`          |
+| `admin/users/page.tsx`     | Role/status toggle | `supabase.from('profiles').update({ role / status }).eq('id', id)` |
 
 **Admin dashboard (`admin/dashboard/page.tsx`):** Replace all mock KPI numbers with aggregation queries:
+
 ```sql
 select count(*) from orders where status = 'pending';
 select sum(total) from orders where payment_status = 'paid' and created_at > now() - interval '30 days';
@@ -388,19 +392,20 @@ select count(*) from profiles where role = 'customer';
 
 Trigger emails for:
 
-| Event | Email |
-|---|---|
-| Order placed | Order confirmation with items, total, and estimated delivery |
-| Order shipped | Shipping confirmation with tracking number |
-| Order fulfilled | Delivery confirmation |
-| Account registered | Welcome email + loyalty points balance |
-| Reward redeemed | Promo code delivery |
-| Password reset | Supabase Auth handles this natively |
+| Event              | Email                                                        |
+| ------------------ | ------------------------------------------------------------ |
+| Order placed       | Order confirmation with items, total, and estimated delivery |
+| Order shipped      | Shipping confirmation with tracking number                   |
+| Order fulfilled    | Delivery confirmation                                        |
+| Account registered | Welcome email + loyalty points balance                       |
+| Reward redeemed    | Promo code delivery                                          |
+| Password reset     | Supabase Auth handles this natively                          |
 
 **Recommended service:** Resend (`resend.com`) or SendGrid.  
 **Setup:** `pnpm add resend` → create `app/api/email/route.ts` → call from Paystack webhook and order status update handlers.
 
 **Environment variables:**
+
 ```
 RESEND_API_KEY=re_...
 EMAIL_FROM=hello@haydaskinco.com
@@ -422,6 +427,7 @@ POST /api/newsletter  { email: string }
 ```
 
 **Environment variables:**
+
 ```
 MAILCHIMP_API_KEY=...
 MAILCHIMP_AUDIENCE_ID=...
@@ -435,6 +441,7 @@ MAILCHIMP_SERVER_PREFIX=us1
 **Current:** `components/contact-form.tsx` and `app/(storefront)/wholesale/page.tsx` — `preventDefault()` → success state only.
 
 **Integration options:**
+
 - Send via Resend/SendGrid to `hello@haydaskinco.com`
 - OR insert into a `contact_submissions` / `wholesale_enquiries` Supabase table for admin review
 
@@ -445,12 +452,14 @@ MAILCHIMP_SERVER_PREFIX=us1
 **Current:** All WhatsApp links use placeholder `+234 800 000 0000`.
 
 **Files to update:**
+
 - `components/whatsapp-widget.tsx` — `href`
 - `app/(storefront)/contact/page.tsx` — CTA link
 - `components/announcement-bar.tsx` — phone display
 - `components/site-footer.tsx` — phone number
 
 Move the number to an environment variable:
+
 ```
 NEXT_PUBLIC_WHATSAPP_NUMBER=2348XXXXXXXXX
 ```
@@ -468,12 +477,12 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=2348XXXXXXXXX
 ```ts
 // In AdminProductForm handleImageUpload:
 const { data } = await supabase.storage
-  .from('product-images')
-  .upload(`${productId}/${file.name}`, file)
+  .from("product-images")
+  .upload(`${productId}/${file.name}`, file);
 
 const publicUrl = supabase.storage
-  .from('product-images')
-  .getPublicUrl(data.path).data.publicUrl
+  .from("product-images")
+  .getPublicUrl(data.path).data.publicUrl;
 ```
 
 **Storage bucket:** `product-images` (public read, authenticated write).
@@ -555,4 +564,4 @@ Week 6  ── Loyalty & polish
 
 ---
 
-*Last updated: July 2026. All UI is complete — this document tracks backend wiring only.*
+_Last updated: July 2026. All UI is complete — this document tracks backend wiring only._
