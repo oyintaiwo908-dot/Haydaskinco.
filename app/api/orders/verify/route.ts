@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { allowMockCheckout, isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
-import { fulfillPaidOrder, releaseOrderStock } from "@/lib/supabase/orders"
+import { fulfillPaidOrder } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
@@ -60,7 +60,6 @@ export async function POST(request: Request) {
           .from("orders")
           .update({ payment_status: "failed", updated_at: new Date().toISOString() })
           .eq("reference", reference)
-        void releaseOrderStock(db, reference)
         return NextResponse.json(
           { ok: false, error: `Payment not successful (${tx.status}).` },
           { status: 400 },

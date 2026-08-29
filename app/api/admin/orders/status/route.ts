@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createAdminServerClient } from "@/lib/supabase/server"
 import { sendOrderFulfilled, sendOrderShipped } from "@/lib/email/send"
-import { releaseOrderStock, rowToOrder } from "@/lib/supabase/orders"
+import { rowToOrder } from "@/lib/supabase/orders"
 import type { OrderStatus } from "@/lib/orders"
 
 const ALLOWED: OrderStatus[] = [
@@ -52,12 +52,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid reference or status." }, { status: 400 })
     }
 
-    const { data: before } = await db
-      .from("orders")
-      .select("payment_status, stock_reserved")
-      .eq("reference", reference)
-      .maybeSingle()
-
     const { error } = await db
       .from("orders")
       .update({ status, updated_at: new Date().toISOString() })
@@ -65,14 +59,6 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    if (
-      (status === "cancelled" || status === "refunded") &&
-      before?.payment_status !== "paid" &&
-      before?.stock_reserved
-    ) {
-      void releaseOrderStock(db, reference)
     }
 
     if (status === "shipped" || status === "fulfilled") {
