@@ -11,7 +11,7 @@ import {
   resolveCatalogLabel,
   slugifyCatalogLabel,
 } from "@/lib/catalog"
-import { queryProducts } from "@/lib/supabase/products"
+import { countProducts, queryProducts, type ProductQuery } from "@/lib/supabase/products"
 import { getActiveBrands } from "@/lib/supabase/brands"
 import {
   getCategoryTree,
@@ -33,6 +33,9 @@ const SORT_OPTIONS = [
 
 /** Slider end. At this value the control means “all prices” and is not sent as priceMax. */
 const PRICE_CEILING = 1_000_000
+
+/** Products fetched per page on the shop grid ("Load more" fetches the next page). */
+const PAGE_SIZE = 96
 
 function resolveShopCategory(tree: CategorySection[], slugOrName: string) {
   const direct = resolveCategoryName(tree, slugOrName)
@@ -89,6 +92,10 @@ export function ShopGrid({
   const [minRating, setMinRating]     = useState(0)
   const [filtered, setFiltered] = useState<Product[]>(initialProducts ?? [])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState((initialProducts?.length ?? 0) >= PAGE_SIZE)
+  const [total, setTotal] = useState<number | null>(null)
+  const [activeQuery, setActiveQuery] = useState<ProductQuery | null>(null)
   const [brandNames, setBrandNames] = useState<string[]>([])
   const [concernOptions, setConcernOptions] = useState<string[]>([...ALL_CONCERNS])
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([...ALL_INGREDIENTS])
@@ -170,7 +177,7 @@ export function ShopGrid({
         : (resolveCategoryName(categoryTree, category) ??
             (treeReady ? "All" : category))
 
-    queryProducts({
+    const q: ProductQuery = {
       category: categoryName,
       brand,
       concern,
@@ -181,14 +188,38 @@ export function ShopGrid({
       inStockOnly,
       minRating,
       sort,
-      limit: 96,
-    }).then(list => {
-      if (!cancelled) setFiltered(list)
+    }
+    setActiveQuery(q)
+    setTotal(null)
+    countProducts(q).then(n => {
+      if (!cancelled) setTotal(n)
+    })
+    queryProducts({ ...q, limit: PAGE_SIZE }).then(list => {
+      if (cancelled) return
+      setFiltered(list)
+      setHasMore(list.length >= PAGE_SIZE)
     }).finally(() => {
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
   }, [category, brand, concern, ingredient, skinType, sort, priceMax, priceFiltered, inStockOnly, minRating, categoryTree, treeReady, urlCategory, saleOnly])
+
+  async function loadMore() {
+    if (!activeQuery || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const next = await queryProducts({ ...activeQuery, limit: PAGE_SIZE, offset: filtered.length })
+      setFiltered(prev => {
+        const seen = new Set(prev.map(p => p.id))
+        return [...prev, ...next.filter(p => !seen.has(p.id))]
+      })
+      setHasMore(next.length >= PAGE_SIZE)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const shownCount = total ?? filtered.length
 
   const activeCount = [
     category !== "All", brand !== "All", concern !== "All",
@@ -360,7 +391,7 @@ export function ShopGrid({
                 </button>
               )}
               <p className="text-xs font-light text-muted-foreground">
-                {loading ? "Loading…" : `${filtered.length} product${filtered.length !== 1 ? "s" : ""}`}
+                {loading ? "Loading…" : `${shownCount} product${shownCount !== 1 ? "s" : ""}`}
               </p>
             </div>
 
@@ -405,7 +436,7 @@ export function ShopGrid({
                     onClick={() => setFiltersOpen(false)}
                     className="w-full bg-foreground py-3.5 text-xs font-medium uppercase tracking-[0.16em] text-background"
                   >
-                    {loading ? "Show products" : `Show ${filtered.length} product${filtered.length === 1 ? "" : "s"}`}
+                    {loading ? "Show products" : `Show ${shownCount} product${shownCount === 1 ? "" : "s"}`}
                   </button>
                 </div>
               </div>
@@ -449,6 +480,22 @@ export function ShopGrid({
               {filtered.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}
+            </div>
+          )}
+
+          {!loading && filtered.length > 0 && hasMore && (
+            <div className="mt-14 flex flex-col items-center gap-3">
+              <p className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+                Showing {filtered.length}{total != null ? ` of ${total}` : ""} products
+              </p>
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="border border-foreground px-10 py-3.5 text-xs font-medium uppercase tracking-[0.16em] transition-colors hover:bg-foreground hover:text-background disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
             </div>
           )}
         </div>

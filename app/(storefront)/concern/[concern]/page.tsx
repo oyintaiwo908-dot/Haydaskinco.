@@ -71,7 +71,7 @@ export default async function ConcernPage({ params }: { params: Promise<{ concer
   const label = slugToLabel(concern)
   if (!label) notFound()
 
-  const filtered = await queryProducts({ concern: label })
+  const filtered = await queryProducts({ concern: label, limit: 1000 })
   const info = CONCERN_INFO[label] ?? {
     desc: `Products formulated to help with ${label.toLowerCase()}. Explore trusted brands selected for this concern.`,
     tip: DEFAULT_CONCERN_INFO.tip,
