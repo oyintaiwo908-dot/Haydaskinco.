@@ -280,6 +280,12 @@ function applyProductFilters(query: any, q: ProductQuery) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyProductSort(query: any, sort?: string) {
+  // Tie-break on id so paged results ("Load more") never repeat or skip products
+  return applyPrimarySort(query, sort).order("id", { ascending: true })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyPrimarySort(query: any, sort?: string) {
   switch (sort) {
     case "price-asc":
       return query.order("price", { ascending: true })

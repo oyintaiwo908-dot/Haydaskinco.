@@ -39,7 +39,7 @@ export default async function IngredientPage({ params }: { params: Promise<{ ing
   const label = slugToLabel(ingredient)
   if (!label) notFound()
 
-  const filtered = await queryProducts({ ingredient: label })
+  const filtered = await queryProducts({ ingredient: label, limit: 1000 })
   const info = INGREDIENT_INFO[label] ?? {
     desc: `Shop authenticated products featuring ${label}, curated for Nigerian skin.`,
     best: "Browse the selection below or explore related actives.",
