@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Check } from "lucide-react"
-import { FREE_STANDARD_DELIVERY, SOCIAL_LINKS } from "@/lib/storefront-copy"
+import { FREE_STANDARD_DELIVERY, SOCIAL_LINKS, SOCIAL_URLS } from "@/lib/storefront-copy"
 import { getWhatsAppDisplay, getWhatsAppNumber } from "@/lib/whatsapp"
 
 const COLUMNS = [
@@ -33,9 +33,9 @@ const COLUMNS = [
     title: "Help",
     links: [
       { label: "Contact Us", href: "/contact" },
-      { label: "FAQs", href: "/contact" },
-      { label: "Shipping & Delivery", href: "/contact" },
-      { label: "Returns Policy", href: "/contact" },
+      { label: "FAQs", href: "/faq" },
+      { label: "Shipping & Delivery", href: "/shipping" },
+      { label: "Returns Policy", href: "/returns" },
       { label: "Track My Order", href: "/account/orders" },
     ],
   },
@@ -74,10 +74,10 @@ function IconTikTok({ className }: { className?: string }) {
   )
 }
 
+// Only accounts that exist are linked. Add Facebook / TikTok here once the
+// accounts are live (icons: IconFacebook, IconTikTok).
 const SOCIALS = [
-  { label: "Instagram", icon: IconInstagram, href: "#" },
-  { label: "Facebook", icon: IconFacebook, href: "#" },
-  { label: "TikTok", icon: IconTikTok, href: "#" },
+  { label: "Instagram", icon: IconInstagram, href: SOCIAL_URLS.instagram },
 ]
 
 /* Inline payment brand SVGs */
@@ -212,6 +212,8 @@ export function SiteFooter() {
                 <a
                   key={s.label}
                   href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={s.label}
                   className="flex size-8 items-center justify-center border border-border text-muted-foreground transition-all hover:border-gold hover:text-gold"
                 >
