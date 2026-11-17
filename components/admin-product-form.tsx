@@ -166,19 +166,19 @@ export function AdminProductForm({ product }: { product?: Product }) {
   useEffect(() => {
     getActiveBrands().then(list => {
       setBrands(list)
-      if (!product?.brand && list[0] && !form.brand) {
-        setForm(f => ({ ...f, brand: list[0].name }))
-      }
+      // New products start with no brand selected (the field is required), so
+      // nothing is saved under the first brand in the list by accident.
+      // Existing products: match the saved brand to the Brands list even when
+      // the capitalisation or punctuation differs (e.g. "Bioderma" vs "BIODERMA").
+      setForm(f => {
+        if (!f.brand || list.some(b => b.name === f.brand)) return f
+        const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "")
+        const match = list.find(b => norm(b.name) === norm(f.brand))
+        return match ? { ...f, brand: match.name } : f
+      })
     })
-    getCategoryTree().then(tree => {
-      setCategoryTree(tree)
-      if (!product?.category && !(product?.categories?.length)) {
-        const first = tree[0]?.categories[0]?.name
-        if (first) {
-          setForm(f => (f.categories.length ? f : { ...f, categories: [first], category: first }))
-        }
-      }
-    })
+    // No default category: the form requires at least one before saving.
+    getCategoryTree().then(setCategoryTree)
     getCatalogNames("ingredients").then(setIngredientOptions)
     getCatalogNames("concerns").then(setConcernOptions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -535,6 +535,9 @@ export function AdminProductForm({ product }: { product?: Product }) {
                         required
                       >
                         <option value="">Select brand…</option>
+                        {form.brand && !brands.some(b => b.name === form.brand) && (
+                          <option value={form.brand}>{form.brand}</option>
+                        )}
                         {brands.map(b => (
                           <option key={b.id} value={b.name}>{b.name}</option>
                         ))}
