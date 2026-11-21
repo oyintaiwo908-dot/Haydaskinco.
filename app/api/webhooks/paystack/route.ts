@@ -1,15 +1,22 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import {
-  toKobo,
+  paystackAmountMatches,
   verifyPaystackSignature,
   verifyTransaction,
 } from "@/lib/paystack"
 import { fulfillPaidOrder } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
+import { revalidateStockForOrder } from "@/lib/stock-revalidate"
+
+/** Paystack event bodies are small; refuse anything absurd before hashing it. */
+const MAX_WEBHOOK_BYTES = 256_000
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
+  if (rawBody.length > MAX_WEBHOOK_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 })
+  }
   const signature = request.headers.get("x-paystack-signature")
 
   const valid = await verifyPaystackSignature(rawBody, signature)
@@ -27,7 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  if (event.event === "charge.success" && event.data?.reference) {
+  if (event.event === "charge.success" && typeof event.data?.reference === "string") {
     const reference = event.data.reference
     const db = createAdminClient()
     if (!db) {
@@ -51,15 +58,15 @@ export async function POST(request: Request) {
     }
 
     try {
+      // Never trust the event body for money: re-read the transaction from Paystack.
       const tx = await verifyTransaction(reference)
       if (tx.status !== "success") {
         console.error(`[webhook] tx not success ref=${reference} status=${tx.status}`)
         return NextResponse.json({ received: true })
       }
-      const expectedKobo = toKobo(Number(order.total))
-      if (typeof tx.amount === "number" && tx.amount !== expectedKobo) {
+      if (!paystackAmountMatches(tx, Number(order.total))) {
         console.error(
-          `[webhook] amount mismatch ref=${reference} paystack=${tx.amount} expected=${expectedKobo}`,
+          `[webhook] amount/currency mismatch ref=${reference} paystack=${tx.amount} ${tx.currency ?? "?"}`,
         )
         return NextResponse.json({ received: true })
       }
@@ -72,7 +79,8 @@ export async function POST(request: Request) {
     if (!result.ok) {
       console.error("[webhook] fulfill:", result.message)
     } else {
-      void sendOrderConfirmationIfNew(reference, result.message)
+      after(() => sendOrderConfirmationIfNew(reference, result.message))
+      after(() => revalidateStockForOrder(db, reference))
     }
   }
 

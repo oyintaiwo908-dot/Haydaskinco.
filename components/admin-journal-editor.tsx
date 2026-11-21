@@ -114,7 +114,9 @@ export function AdminJournalEditor({ journal }: { journal?: Journal }) {
         { ...form, slug, image: coverUrl, status, readTime: Number(form.readTime) || 5 },
         journal?.id,
       )
-      await revalidateJournal(slug)
+      // Save already succeeded; a refused refresh only delays the storefront (≤1h ISR window).
+      const refreshed = await revalidateJournal(slug)
+      if (!refreshed.ok) console.warn("[journal] storefront refresh skipped:", refreshed.error)
       router.push("/admin/journals")
     } catch (err) {
       console.error("Save failed:", err)
@@ -251,7 +253,7 @@ export function AdminJournalEditor({ journal }: { journal?: Journal }) {
               value={form.title}
               onChange={set("title")}
               placeholder="Article title…"
-              className="w-full border-0 border-b border-border bg-transparent pb-4 font-serif text-3xl font-medium outline-none placeholder:text-muted-foreground/40 focus:border-foreground transition-colors"
+              className="w-full border-0 border-b border-border bg-transparent pb-4 font-serif text-3xl font-medium outline-none placeholder:text-muted-foreground focus:border-foreground transition-colors"
             />
 
             {/* Excerpt */}
@@ -260,7 +262,7 @@ export function AdminJournalEditor({ journal }: { journal?: Journal }) {
               onChange={set("excerpt")}
               placeholder="Write a brief excerpt that appears in listings…"
               rows={2}
-              className="w-full resize-none border-0 border-b border-border bg-transparent pb-4 text-sm font-light text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:border-foreground transition-colors"
+              className="w-full resize-none border-0 border-b border-border bg-transparent pb-4 text-sm font-light text-muted-foreground outline-none placeholder:text-muted-foreground focus:border-foreground transition-colors"
             />
 
             {/* Toolbar + Editor */}
@@ -311,7 +313,7 @@ Use **bold** or *italic* for emphasis.
 > Add a blockquote for notable quotes.
 
 - Use bullet points for lists"
-                  className="min-h-96 w-full resize-y bg-transparent p-6 font-mono text-sm font-light leading-relaxed outline-none placeholder:text-muted-foreground/30"
+                  className="min-h-96 w-full resize-y bg-transparent p-6 font-mono text-sm font-light leading-relaxed outline-none placeholder:text-muted-foreground"
                 />
               )}
             </div>

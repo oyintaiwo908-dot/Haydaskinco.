@@ -9,7 +9,15 @@ import {
   toggleBrandActive,
   type Brand,
 } from "@/lib/supabase/brands"
+import { revalidateBrands } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
+
+/** Storefront brand pages cache for up to 1h; refresh them after a change (non-blocking). */
+function refreshStorefrontBrands() {
+  void revalidateBrands().then(r => {
+    if (!r.ok) console.warn("[brands] storefront refresh skipped:", r.error)
+  })
+}
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([])
@@ -60,6 +68,7 @@ export default function AdminBrandsPage() {
     setError(null)
     try {
       await saveBrand({ id: editId ?? undefined, name, tagline })
+      refreshStorefrontBrands()
       resetForm()
       await load()
     } catch (err) {
@@ -73,6 +82,7 @@ export default function AdminBrandsPage() {
     setBrands(prev => prev.map(x => (x.id === b.id ? { ...x, isActive: !x.isActive } : x)))
     try {
       await toggleBrandActive(b.id, !b.isActive)
+      refreshStorefrontBrands()
     } catch {
       await load()
     }
@@ -82,6 +92,7 @@ export default function AdminBrandsPage() {
     if (!confirm("Delete this brand? Products keeping the brand name text will still show it.")) return
     try {
       await deleteBrand(id)
+      refreshStorefrontBrands()
       setBrands(prev => prev.filter(b => b.id !== id))
       if (editId === id) resetForm()
     } catch (err) {

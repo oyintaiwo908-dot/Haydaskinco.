@@ -16,6 +16,7 @@ import {
 } from "@/lib/orders"
 import { getAdminOrdersPage } from "@/lib/supabase/orders"
 import { OrderItemThumb } from "@/components/order-item-thumb"
+import { allowedStatusTargets, requestStatusChange } from "@/components/admin-order-status"
 import {
   AdminPagination,
   ADMIN_PAGE_SIZE,
@@ -54,65 +55,70 @@ function formatDate(iso: string, short = false) {
   )
 }
 
+type OrdersPageData = { orders: Order[]; total: number; kpis: { revenue: number; pending: number; shipped: number; fulfilled: number } }
+
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [total, setTotal] = useState(0)
-  const [kpis, setKpis] = useState({ revenue: 0, pending: 0, shipped: 0, fulfilled: 0 })
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all")
-  const [sortKey, setSortKey] = useState<SortKey>("date_desc")
-  const [months, setMonths] = useState<MonthRange>(1)
+  const [statusFilter, setStatusFilterState] = useState<"all" | OrderStatus>("all")
+  const [sortKey, setSortKeyState] = useState<SortKey>("date_desc")
+  const [months, setMonthsState] = useState<MonthRange>(1)
   const [page, setPage] = useState(1)
   const [showSort, setShowSort] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
+  const [statusNotice, setStatusNotice] = useState<{ kind: "error" | "ok"; message: string } | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  // Filter changes go back to page 1 (set in the handlers, not in an effect).
+  const setStatusFilter = (v: "all" | OrderStatus) => { setStatusFilterState(v); setPage(1) }
+  const setSortKey = (v: SortKey) => { setSortKeyState(v); setPage(1) }
+  const setMonths = (v: MonthRange) => { setMonthsState(v); setPage(1) }
 
   useEffect(() => {
-    const t = setTimeout(() => setSearchDebounced(search), 300)
+    const t = setTimeout(() => {
+      setSearchDebounced(search)
+      setPage(1)
+    }, 300)
     return () => clearTimeout(t)
   }, [search])
 
-  useEffect(() => {
-    setPage(1)
-  }, [searchDebounced, statusFilter, sortKey, months])
+  const queryKey = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick])
+  const [result, setResult] = useState<{ key: string; data: OrdersPageData } | null>(null)
+  const loading = result?.key !== queryKey
+  const orders = result?.data.orders ?? []
+  const total = result?.data.total ?? 0
+  const kpis = result?.data.kpis ?? { revenue: 0, pending: 0, shipped: 0, fulfilled: 0 }
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const data = await getAdminOrdersPage({
+  useEffect(() => {
+    let cancelled = false
+    const key = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick])
+    getAdminOrdersPage({
       search: searchDebounced,
       status: statusFilter,
       sort: sortKey,
       months,
       page,
       pageSize: ADMIN_PAGE_SIZE,
+    }).then(data => {
+      if (!cancelled) setResult({ key, data })
     })
-    setOrders(data.orders)
-    setTotal(data.total)
-    setKpis(data.kpis)
-    setLoading(false)
-  }, [searchDebounced, statusFilter, sortKey, months, page])
+    return () => { cancelled = true }
+  }, [searchDebounced, statusFilter, sortKey, months, page, reloadTick])
 
-  useEffect(() => { void load() }, [load])
+  const load = useCallback(() => setReloadTick(t => t + 1), [])
 
+  /** No optimistic change: the server enforces the transition table and may refuse. */
   async function updateStatus(id: string, status: OrderStatus) {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o))
-    try {
-      const res = await fetch("/api/admin/orders/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference: id, status }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        console.error("Status update failed:", data.error ?? res.statusText)
-        await load()
-      } else {
-        await load()
-      }
-    } catch (err) {
-      console.error("Status update failed:", err)
-      await load()
+    setUpdating(id)
+    setStatusNotice(null)
+    const res = await requestStatusChange(id, status)
+    setUpdating(null)
+    if (res.ok) {
+      setStatusNotice({ kind: "ok", message: `Order ${id} moved to ${ORDER_STATUS_META[status].label}.` })
+    } else {
+      setStatusNotice({ kind: "error", message: `Order ${id}: ${res.message}` })
     }
+    load()
   }
 
   const monthsLabel = MONTH_RANGE_OPTIONS.find(o => o.value === months)?.label ?? "Last month"
@@ -163,6 +169,20 @@ export default function AdminOrdersPage() {
       </div>
 
       <div className="admin-page-body space-y-6">
+        {statusNotice && (
+          <div
+            role={statusNotice.kind === "error" ? "alert" : "status"}
+            className={cn(
+              "flex items-start justify-between gap-3 border px-4 py-3 text-sm",
+              statusNotice.kind === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-success/30 bg-success/5 text-success",
+            )}
+          >
+            <p>{statusNotice.message}</p>
+            <button type="button" onClick={() => setStatusNotice(null)} className="shrink-0 text-xs underline underline-offset-4">
+              Dismiss
+            </button>
+          </div>
+        )}
         {/* KPI cards */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <KpiCard label="Total Revenue" value={formatCurrency(kpis.revenue)} sub={`${total} orders`} icon={TrendingUp} highlight />
@@ -177,6 +197,7 @@ export default function AdminOrdersPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <input
               type="search"
+              aria-label="Search orders"
               placeholder="Order ID, customer, reference…"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -261,7 +282,7 @@ export default function AdminOrdersPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {orders.map(order => (
-                    <OrderRow key={order.id} order={order} onStatusChange={updateStatus} />
+                    <OrderRow key={order.id} order={order} onStatusChange={updateStatus} busy={updating === order.id} />
                   ))}
                   <tr className="admin-table-fill" aria-hidden="true">
                     <td colSpan={8} />
@@ -290,10 +311,11 @@ export default function AdminOrdersPage() {
 }
 
 /* ─── Desktop Row ──────────────────────────────────────────── */
-function OrderRow({ order, onStatusChange }: { order: Order; onStatusChange: (id: string, s: OrderStatus) => void }) {
+function OrderRow({ order, onStatusChange, busy }: { order: Order; onStatusChange: (id: string, s: OrderStatus) => void; busy?: boolean }) {
   const [open, setOpen] = useState(false)
   const meta = ORDER_STATUS_META[order.status]
   const pmeta = PAYMENT_STATUS_META[order.paymentStatus]
+  const targets = allowedStatusTargets(order)
 
   return (
     <tr className="hover:bg-secondary transition-colors group">
@@ -347,28 +369,31 @@ function OrderRow({ order, onStatusChange }: { order: Order; onStatusChange: (id
           <button
             type="button"
             onClick={() => setOpen(v => !v)}
+            disabled={busy || targets.length === 0}
+            aria-expanded={open}
+            aria-label={`Status: ${meta.label}. ${targets.length ? "Change status" : "No further changes allowed"}`}
             className={cn(
-              "flex items-center gap-1.5 border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.1em] transition-colors hover:opacity-80",
+              "flex items-center gap-1.5 border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.1em] transition-colors hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100",
               meta.bg, meta.color, meta.border,
             )}
           >
-            {meta.label}
-            <ChevronDown className="size-3" />
+            {busy ? "Saving…" : meta.label}
+            {targets.length > 0 && !busy && <ChevronDown aria-hidden className="size-3" />}
           </button>
           {open && (
-            <div className="absolute left-0 top-8 z-30 min-w-40 border border-border bg-background shadow-md">
-              {(Object.keys(ORDER_STATUS_META) as OrderStatus[]).map(s => (
+            <div className="absolute left-0 top-8 z-30 min-w-52 border border-border bg-background shadow-md" onKeyDown={e => e.key === "Escape" && setOpen(false)}>
+              <p className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Move to</p>
+              {targets.map(t => (
                 <button
-                  key={s}
+                  key={t.status}
                   type="button"
-                  onClick={() => { onStatusChange(order.id, s); setOpen(false) }}
-                  className={cn(
-                    "flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-muted",
-                    order.status === s ? "font-medium" : "font-light text-muted-foreground",
-                  )}
+                  disabled={Boolean(t.disabledReason)}
+                  title={t.disabledReason ?? undefined}
+                  onClick={() => { onStatusChange(order.id, t.status); setOpen(false) }}
+                  className="flex w-full flex-col items-start px-4 py-2 text-left text-xs transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                 >
-                  <span className={cn("size-1.5 rounded-full shrink-0", ORDER_STATUS_META[s].bg.replace("bg-", "bg-").replace("/10", ""), ORDER_STATUS_META[s].color)} />
-                  {ORDER_STATUS_META[s].label}
+                  <span className="font-medium">{ORDER_STATUS_META[t.status].label}</span>
+                  {t.disabledReason && <span className="text-[10px] text-muted-foreground">{t.disabledReason}</span>}
                 </button>
               ))}
             </div>

@@ -83,13 +83,28 @@ export async function verifyTransaction(reference: string) {
   if (!res.ok || !json.status) {
     throw new Error(json.message ?? "Paystack verify failed")
   }
-  return json.data as {
-    status: string
-    reference: string
-    amount: number
-    paid_at?: string
-    customer?: { email?: string }
-  }
+  return json.data as PaystackTransaction
+}
+
+export type PaystackTransaction = {
+  status: string
+  reference: string
+  amount: number
+  currency?: string
+  paid_at?: string
+  customer?: { email?: string }
+}
+
+/** Paystack statuses after which a transaction can no longer succeed. */
+export function isFinalFailureStatus(status: string) {
+  return status === "failed" || status === "reversed"
+}
+
+/** Fail closed: amount must be a number equal to the order total in kobo, currency NGN. */
+export function paystackAmountMatches(tx: PaystackTransaction, orderTotalNgn: number) {
+  if (typeof tx.amount !== "number" || !Number.isFinite(orderTotalNgn)) return false
+  if (tx.currency && tx.currency.toUpperCase() !== "NGN") return false
+  return tx.amount === toKobo(orderTotalNgn)
 }
 
 /** Verify x-paystack-signature header (HMAC SHA512 of raw body). */
@@ -114,6 +129,8 @@ export async function verifyPaystackSignature(
 
 export function generateOrderReference() {
   const stamp = Date.now().toString(36).toUpperCase()
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase()
+  const bytes = new Uint8Array(6)
+  globalThis.crypto.getRandomValues(bytes)
+  const rand = Array.from(bytes, b => (b % 36).toString(36)).join("").toUpperCase()
   return `HAY-${stamp}-${rand}`
 }

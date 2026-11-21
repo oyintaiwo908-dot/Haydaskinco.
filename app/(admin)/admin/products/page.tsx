@@ -80,9 +80,11 @@ export default function AdminProductsPage() {
         await deleteProduct(confirm.id)
       } else {
         await setProductArchived(confirm.id, confirm.action === "archive")
-        const { revalidateProducts } = await import("@/app/actions/revalidate")
-        await revalidateProducts(confirm.id)
       }
+      // Deletes refresh too: catalogue pages now cache for up to 1h.
+      const { revalidateProducts } = await import("@/app/actions/revalidate")
+      const refreshed = await revalidateProducts(confirm.id)
+      if (!refreshed.ok) console.warn("[product] storefront refresh skipped:", refreshed.error)
       await load()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not update this product.")

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
-import { ADMIN_AUTH_COOKIE, CUSTOMER_AUTH_COOKIE } from "@/lib/supabase/auth-cookies"
+import { ADMIN_AUTH_COOKIE } from "@/lib/supabase/auth-cookies"
 
 function hasAuthCookie(request: NextRequest, cookieName: string): boolean {
   return request.cookies
@@ -32,13 +32,14 @@ function refreshSession(
   return supabase.auth.getUser()
 }
 
+/**
+ * Runs only on /admin and /api/admin (see `config.matcher`). Every proxy run is a
+ * billed Vercel Function invocation, so storefront pages, prefetches, assets and
+ * customer APIs deliberately skip it: storefront auth is client-side, and customer
+ * route handlers refresh their own session through lib/supabase/server.ts.
+ */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-
-  // Skip session work for webhooks / pure static-ish API noise
-  if (pathname.startsWith("/api/webhooks")) {
-    return NextResponse.next({ request })
-  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -71,10 +72,7 @@ export async function proxy(request: NextRequest) {
 
   const response = NextResponse.next({ request })
 
-  // Only refresh jars that actually have cookies (cuts double getUser on most traffic)
-  if (hasAuthCookie(request, CUSTOMER_AUTH_COOKIE)) {
-    await refreshSession(request, response, supabaseUrl, supabaseKey, CUSTOMER_AUTH_COOKIE)
-  }
+  // Admin session refresh only; the customer jar is not touched here any more.
   if (hasAuthCookie(request, ADMIN_AUTH_COOKIE)) {
     await refreshSession(request, response, supabaseUrl, supabaseKey, ADMIN_AUTH_COOKIE)
   }
@@ -83,7 +81,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  // Keep this narrow: widening it puts a function invocation in front of every request.
+  matcher: ["/admin/:path*", "/api/admin/:path*"],
 }

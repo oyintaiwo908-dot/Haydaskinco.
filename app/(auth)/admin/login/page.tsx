@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react"
@@ -16,19 +16,26 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [suspendedOpen, setSuspendedOpen] = useState(false)
+  const [suspendedDismissed, setSuspendedDismissed] = useState(false)
+  const [suspendedOnSignIn, setSuspendedOnSignIn] = useState(false)
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [resendSent, setResendSent] = useState(false)
 
+  // ?suspended=1 (set by the admin layout) is read from the URL, not mirrored into state.
+  const suspendedParam = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("suspended") === "1",
+    () => false,
+  )
+  const suspendedOpen = (suspendedParam && !suspendedDismissed) || suspendedOnSignIn
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get("suspended") !== "1") return
-    setSuspendedOpen(true)
-    void createAdminBrowserClient()?.auth.signOut()
-  }, [])
+    if (suspendedParam) void createAdminBrowserClient()?.auth.signOut()
+  }, [suspendedParam])
 
   function closeSuspended() {
-    setSuspendedOpen(false)
+    setSuspendedDismissed(true)
+    setSuspendedOnSignIn(false)
     const url = new URL(window.location.href)
     url.searchParams.delete("suspended")
     window.history.replaceState(null, "", `${url.pathname}${url.search}`)
@@ -42,13 +49,18 @@ export default function AdminLoginPage() {
     const supabase = createAdminBrowserClient()
 
     if (!supabase) {
-      // Mock path — no Supabase configured
+      if (process.env.NODE_ENV === "production") {
+        setError("Admin sign-in is not configured.")
+        setLoading(false)
+        return
+      }
+      // Mock path — local development only, no Supabase configured
       await new Promise(r => setTimeout(r, 800))
       if (email === "admin@haydaskinco.com" && password === "password") {
         saveAdminSession({ email, name: "Admin", role: "admin", signedInAt: Date.now() })
         router.push("/admin/dashboard")
       } else {
-        setError("Invalid email or password. Try admin@haydaskinco.com / password")
+        setError("Invalid email or password.")
         setLoading(false)
       }
       return
@@ -75,7 +87,7 @@ export default function AdminLoginPage() {
 
     if (profile?.is_suspended) {
       await supabase.auth.signOut()
-      setSuspendedOpen(true)
+      setSuspendedOnSignIn(true)
       setLoading(false)
       return
     }
@@ -128,18 +140,20 @@ export default function AdminLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+              <label htmlFor="admin-email" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
                 Email Address
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <input
+                  id="admin-email"
                   type="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@haydaskinco.com"
+                  placeholder="you@example.com"
                   required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                 />
               </div>
             </div>
@@ -147,7 +161,7 @@ export default function AdminLoginPage() {
             {/* Password */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+                <label htmlFor="admin-password" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
                   Password
                 </label>
                 <Link
@@ -160,12 +174,14 @@ export default function AdminLoginPage() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <input
+                  id="admin-password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                 />
                 <button
                   type="button"
@@ -247,11 +263,6 @@ export default function AdminLoginPage() {
             </p>
           </div>
 
-          <div className="mt-4 rounded-sm border border-border/60 bg-muted px-4 py-3">
-            <p className="text-[10px] font-light text-muted-foreground text-center">
-              Demo credentials: admin@haydaskinco.com / password
-            </p>
-          </div>
         </div>
       </div>
     </div>

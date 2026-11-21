@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { SlidersHorizontal, X, ChevronDown } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { usePathname, useSearchParams } from "next/navigation"
+import { ChevronDown, X } from "lucide-react"
 import { type Product } from "@/lib/products"
 import {
   ALL_CONCERNS,
@@ -21,18 +21,21 @@ import {
 } from "@/lib/supabase/categories"
 import { CategorySelect } from "@/components/category-select"
 import { ProductCard } from "@/components/product-card"
+import { ShopToolbar } from "@/components/shop-toolbar"
+import { Sheet } from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
+import { Field, Select } from "@/components/ui/field"
+import { ProductGridSkeleton } from "@/components/ui/skeleton"
+import { Money } from "@/components/ui/price"
 import { cn } from "@/lib/utils"
+import { prefersReducedMotion } from "@/components/motion/use-prefers-reduced-motion"
+import { useFlip } from "@/components/motion/use-flip"
 
-const SORT_OPTIONS = [
-  { label: "Featured",     value: "featured" },
-  { label: "Price: Low–High", value: "price-asc" },
-  { label: "Price: High–Low", value: "price-desc" },
-  { label: "Best Rated",   value: "rating" },
-  { label: "Most Reviews", value: "reviews" },
-]
 
 /** Slider end. At this value the control means “all prices” and is not sent as priceMax. */
 const PRICE_CEILING = 1_000_000
+
+const GRID = "grid grid-cols-2 items-start gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-6 md:gap-y-12 xl:grid-cols-4"
 
 function resolveShopCategory(tree: CategorySection[], slugOrName: string) {
   const direct = resolveCategoryName(tree, slugOrName)
@@ -53,6 +56,12 @@ function resolveShopCategory(tree: CategorySection[], slugOrName: string) {
   return match?.name ?? null
 }
 
+function skinTypeFromUrl(urlSkinType: string) {
+  return urlSkinType === "All" || !urlSkinType
+    ? "All"
+    : resolveCatalogLabel(ALL_SKIN_TYPES, urlSkinType) ?? decodeURIComponent(urlSkinType)
+}
+
 export function ShopGrid({
   initialProducts,
   initialCategory = "All",
@@ -63,7 +72,6 @@ export function ShopGrid({
 }) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
-  const router = useRouter()
   const urlCategory = searchParams.get("category") ?? "All"
   const urlBrand = searchParams.get("brand") ?? "All"
   const urlSkinType = searchParams.get("skinType") ?? "All"
@@ -71,30 +79,39 @@ export function ShopGrid({
   const saleOnly = searchParams.get("sale") === "true"
 
   const [categoryTree, setCategoryTree] = useState<CategorySection[]>([])
+  const [treeReady, setTreeReady] = useState(false)
   const [category, setCategory]   = useState(initialCategory)
   const [brand, setBrand]         = useState(urlBrand === "All" || !urlBrand ? "All" : urlBrand)
   const [concern, setConcern]     = useState("All")
   const [ingredient, setIngredient] = useState("All")
-  const [skinType, setSkinType]   = useState(
-    urlSkinType === "All" || !urlSkinType
-      ? "All"
-      : resolveCatalogLabel(ALL_SKIN_TYPES, urlSkinType) ?? decodeURIComponent(urlSkinType),
-  )
+  const [skinType, setSkinType]   = useState(skinTypeFromUrl(urlSkinType))
   const [sort, setSort]           = useState("featured")
-  const [filtersOpen, setFiltersOpen] = useState(
-    urlFilter === "concerns" || urlFilter === "ingredients",
-  )
+  // Mobile filter sheet only; desktop shows the sidebar.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [priceMax, setPriceMax]   = useState(PRICE_CEILING)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [minRating, setMinRating]     = useState(0)
-  const [filtered, setFiltered] = useState<Product[]>(initialProducts ?? [])
-  const [loading, setLoading] = useState(false)
   const [brandNames, setBrandNames] = useState<string[]>([])
   const [concernOptions, setConcernOptions] = useState<string[]>([...ALL_CONCERNS])
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([...ALL_INGREDIENTS])
-  const [treeReady, setTreeReady] = useState(false)
 
   const priceFiltered = priceMax < PRICE_CEILING
+
+  // Keep filters in sync when the URL changes (navbar links, back/forward). Adjusting state
+  // during render on a changed key is React's recommended alternative to setState in an effect.
+  const urlKey = `${urlCategory}|${urlBrand}|${urlSkinType}|${urlFilter}|${treeReady}`
+  const [syncedUrlKey, setSyncedUrlKey] = useState(urlKey)
+  if (syncedUrlKey !== urlKey) {
+    setSyncedUrlKey(urlKey)
+    setBrand(urlBrand === "All" || !urlBrand ? "All" : urlBrand)
+    if (urlCategory === "All" || !urlCategory) {
+      setCategory("All")
+    } else if (treeReady) {
+      const resolved = resolveShopCategory(categoryTree, urlCategory)
+      if (resolved) setCategory(resolved)
+    }
+    setSkinType(skinTypeFromUrl(urlSkinType))
+  }
 
   useEffect(() => {
     getCategoryTree().then(tree => {
@@ -108,69 +125,44 @@ export function ShopGrid({
     })
   }, [])
 
+  // ?filter=concerns|ingredients: open the sheet on phones, then bring that control into view.
   useEffect(() => {
     if (urlFilter !== "concerns" && urlFilter !== "ingredients") return
-    setFiltersOpen(true)
     const key = urlFilter === "concerns" ? "concern" : "ingredient"
-    const timer = window.setTimeout(() => {
+    const mobile = window.matchMedia("(max-width: 1023px)").matches
+    const openTimer = window.setTimeout(() => {
+      if (mobile) setFiltersOpen(true)
+    }, 80)
+    const scrollTimer = window.setTimeout(() => {
       const nodes = Array.from(document.querySelectorAll<HTMLElement>(`[data-shop-filter="${key}"]`))
       const visible = nodes.find(node => node.getClientRects().length > 0)
-      visible?.scrollIntoView({ behavior: "smooth", block: "center" })
-    }, 80)
-    return () => window.clearTimeout(timer)
+      visible?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" })
+    }, 260)
+    return () => {
+      window.clearTimeout(openTimer)
+      window.clearTimeout(scrollTimer)
+    }
   }, [urlFilter])
 
+  // The sheet is a modal; never leave it open behind the desktop layout.
   useEffect(() => {
-    if (!filtersOpen) return
-    const mq = window.matchMedia("(min-width: 1024px)")
-    if (mq.matches) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFiltersOpen(false)
+    const desktop = window.matchMedia("(min-width: 1024px)")
+    const onChange = () => {
+      if (desktop.matches) setFiltersOpen(false)
     }
-    window.addEventListener("keydown", onKey)
-    return () => {
-      document.body.style.overflow = previous
-      window.removeEventListener("keydown", onKey)
-    }
-  }, [filtersOpen])
+    desktop.addEventListener("change", onChange)
+    return () => desktop.removeEventListener("change", onChange)
+  }, [])
 
-  // Keep filters in sync when navigating via navbar (/shop?category=… / ?brand=… / ?skinType=…)
-  useEffect(() => {
-    setBrand(urlBrand === "All" || !urlBrand ? "All" : urlBrand)
-
-    if (urlCategory === "All" || !urlCategory) {
-      setCategory("All")
-    } else if (treeReady) {
-      const resolved = resolveShopCategory(categoryTree, urlCategory)
-      if (resolved) setCategory(resolved)
-    }
-
-    if (urlSkinType === "All" || !urlSkinType) {
-      setSkinType("All")
-    } else {
-      setSkinType(resolveCatalogLabel(ALL_SKIN_TYPES, urlSkinType) ?? decodeURIComponent(urlSkinType))
-    }
-  }, [urlCategory, urlBrand, urlSkinType, categoryTree, treeReady])
-
-  // Query Supabase with filters (DB-level), not client-side array filtering
-  useEffect(() => {
-    // URL category is a slug; wait until the tree can resolve it to a display name
-    // so we never query with `body-moisturizers-oils` against name-based DB values.
-    const urlNeedsResolve = Boolean(urlCategory && urlCategory !== "All")
-    if (urlNeedsResolve && !treeReady) return
-
-    let cancelled = false
-    setLoading(true)
-
-    const categoryName =
-      category === "All"
-        ? "All"
-        : (resolveCategoryName(categoryTree, category) ??
-            (treeReady ? "All" : category))
-
-    queryProducts({
+  // URL category is a slug; wait until the tree can resolve it to a display name
+  // so we never query with `body-moisturizers-oils` against name-based DB values.
+  const urlNeedsResolve = Boolean(urlCategory && urlCategory !== "All")
+  const categoryName =
+    category === "All"
+      ? "All"
+      : (resolveCategoryName(categoryTree, category) ?? (treeReady ? "All" : category))
+  const query = useMemo(
+    () => ({
       category: categoryName,
       brand,
       concern,
@@ -182,13 +174,37 @@ export function ShopGrid({
       minRating,
       sort,
       limit: 96,
-    }).then(list => {
-      if (!cancelled) setFiltered(list)
-    }).finally(() => {
-      if (!cancelled) setLoading(false)
+    }),
+    [categoryName, brand, concern, ingredient, skinType, saleOnly, priceFiltered, priceMax, inStockOnly, minRating, sort],
+  )
+  const queryKey = JSON.stringify(query)
+
+  // /shop is static, so the server list is unfiltered: on a filtered URL start from the
+  // skeleton instead of flashing every product before the filtered query returns.
+  const startsFiltered =
+    urlCategory !== "All" || urlBrand !== "All" || urlSkinType !== "All" || saleOnly
+  const [result, setResult] = useState<{ key: string | null; list: Product[] }>(() => ({
+    key: startsFiltered ? null : queryKey,
+    list: startsFiltered ? [] : initialProducts ?? [],
+  }))
+  const loading = result.key !== queryKey
+
+  // Query Supabase with filters (DB-level), not client-side array filtering. The first run
+  // also refreshes the ISR list silently (up to 1h old) without a loading state.
+  useEffect(() => {
+    if (urlNeedsResolve && !treeReady) return
+    let cancelled = false
+    queryProducts(query).then(list => {
+      if (!cancelled) setResult({ key: queryKey, list })
     })
     return () => { cancelled = true }
-  }, [category, brand, concern, ingredient, skinType, sort, priceMax, priceFiltered, inStockOnly, minRating, categoryTree, treeReady, urlCategory, saleOnly])
+  }, [query, queryKey, urlNeedsResolve, treeReady])
+
+  const filtered = result.list
+  // Filter changes: cards that stay glide to their new places and new ones rise in. Never on
+  // the first render: the server-rendered grid must not animate again when this takes over.
+  const gridRef = useRef<HTMLDivElement>(null)
+  useFlip(gridRef, filtered.map(p => p.id).join("|"), { enterNew: true })
 
   const activeCount = [
     category !== "All", brand !== "All", concern !== "All",
@@ -200,7 +216,9 @@ export function ShopGrid({
     const params = new URLSearchParams(searchParams.toString())
     mutate(params)
     const next = params.toString()
-    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false })
+    // Native replaceState (not router.replace): updates useSearchParams without a server
+    // round trip; router.replace re-requested the page from Vercel on every filter click.
+    window.history.replaceState(null, "", next ? `${pathname}?${next}` : pathname)
   }
 
   function applyCategory(name: string) {
@@ -236,86 +254,96 @@ export function ShopGrid({
     setIngredient("All"); setSkinType("All")
     setPriceMax(PRICE_CEILING); setInStockOnly(false); setMinRating(0)
     setFiltersOpen(false)
-    router.replace("/shop", { scroll: false })
+    // Native replaceState: no server round trip (see writeQuery).
+    window.history.replaceState(null, "", "/shop")
   }
 
-  const filterFields = (stacked = false) => (
-      <div className={cn(stacked ? "flex flex-col gap-5" : "grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
-        <div>
-          <p className="mb-2 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Category</p>
-          <div className="relative">
-            <CategorySelect
-              value={category}
-              onChange={applyCategory}
-              tree={categoryTree}
-              includeAll
-              className="w-full appearance-none border border-border bg-background px-3 py-2.5 pr-8 text-xs font-light outline-none focus:border-foreground transition-colors cursor-pointer"
-            />
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          </div>
-        </div>
-        <FilterSelect label="Brand" value={brand} onChange={applyBrand} options={["All", ...brandNames]} />
-        <FilterSelect
-          label="Concern"
-          value={concern}
-          onChange={setConcern}
-          options={["All", ...concernOptions]}
-          filterKey="concern"
-          highlighted={urlFilter === "concerns"}
-        />
-        <FilterSelect
-          label="Ingredient"
-          value={ingredient}
-          onChange={setIngredient}
-          options={["All", ...ingredientOptions]}
-          filterKey="ingredient"
-          highlighted={urlFilter === "ingredients"}
-        />
-        <FilterSelect label="Skin Type" value={skinType} onChange={applySkinType} options={["All", ...ALL_SKIN_TYPES]} />
-        <div>
-          <p className="mb-2 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Min Rating</p>
-          <div className="flex items-center gap-1">
-            {[0, 3, 3.5, 4, 4.5].map(r => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setMinRating(r)}
-                className={cn(
-                  "flex-1 border py-1.5 text-[10px] font-light transition-all",
-                  minRating === r
-                    ? "border-gold bg-lavender text-gold"
-                    : "border-border text-muted-foreground hover:border-gold/60",
-                )}
-              >
-                {r === 0 ? "All" : `${r}+`}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="mb-2 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-            {priceFiltered ? `Max price: ₦${priceMax.toLocaleString("en-NG")}` : "Max price: All prices"}
-          </p>
-          <input
-            type="range"
-            min={1000}
-            max={PRICE_CEILING}
-            step={1000}
-            value={priceMax}
-            onChange={e => setPriceMax(Number(e.target.value))}
-            aria-label="Maximum price"
-            className="w-full accent-gold"
+  const countLabel = loading ? "Loading…" : `${filtered.length} product${filtered.length !== 1 ? "s" : ""}`
+
+  /** `idPrefix` keeps ids unique: the fields render in the sidebar and in the mobile sheet. */
+  const filterFields = (idPrefix: string) => (
+    <div className="flex flex-col gap-5">
+      <Field label="Category" id={`${idPrefix}-category`}>
+        <div className="relative">
+          <CategorySelect
+            id={`${idPrefix}-category`}
+            value={category}
+            onChange={applyCategory}
+            tree={categoryTree}
+            includeAll
+            className="h-12 w-full cursor-pointer appearance-none rounded-control border border-input bg-background px-4 pr-10 text-base text-foreground hover:border-navy"
           />
-          <div className="mt-1 flex justify-between text-[10px] font-light text-muted-foreground">
-            <span>₦1,000</span><span>₦1,000,000</span>
-          </div>
-          <label className="mt-3 flex cursor-pointer items-center gap-2">
-            <input type="checkbox" checked={inStockOnly} onChange={e => setInStockOnly(e.target.checked)} className="accent-gold" />
-            <span className="text-xs font-light">In stock only</span>
-          </label>
+          <ChevronDown aria-hidden className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+      </Field>
+      <Field label="Brand">
+        <Select value={brand} onChange={e => applyBrand(e.target.value)}>
+          {["All", ...brandNames].map(o => <option key={o} value={o}>{o}</option>)}
+        </Select>
+      </Field>
+      <div data-shop-filter="concern" className={cn(urlFilter === "concerns" && "outline-2 outline-offset-4 outline-rose")}>
+        <Field label="Concern">
+          <Select value={concern} onChange={e => setConcern(e.target.value)}>
+            {["All", ...concernOptions].map(o => <option key={o} value={o}>{o}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <div data-shop-filter="ingredient" className={cn(urlFilter === "ingredients" && "outline-2 outline-offset-4 outline-rose")}>
+        <Field label="Ingredient">
+          <Select value={ingredient} onChange={e => setIngredient(e.target.value)}>
+            {["All", ...ingredientOptions].map(o => <option key={o} value={o}>{o}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <Field label="Skin type">
+        <Select value={skinType} onChange={e => applySkinType(e.target.value)}>
+          {["All", ...ALL_SKIN_TYPES].map(o => <option key={o} value={o}>{o}</option>)}
+        </Select>
+      </Field>
+      <fieldset>
+        <legend className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-foreground">Minimum rating</legend>
+        <div className="grid grid-cols-5 gap-1">
+          {[0, 3, 3.5, 4, 4.5].map(r => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setMinRating(r)}
+              aria-pressed={minRating === r}
+              aria-label={r === 0 ? "Any rating" : `${r} stars and up`}
+              className={cn(
+                "h-11 rounded-control border text-sm transition-colors",
+                minRating === r ? "border-navy bg-navy text-primary-foreground" : "border-input text-foreground hover:border-navy",
+              )}
+            >
+              {r === 0 ? "All" : `${r}+`}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <div>
+        <label htmlFor={`${idPrefix}-price`} className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-foreground">
+          {priceFiltered ? <>Max price: <Money amount={priceMax} /></> : "Max price: any"}
+        </label>
+        <input
+          id={`${idPrefix}-price`}
+          type="range"
+          min={1000}
+          max={PRICE_CEILING}
+          step={1000}
+          value={priceMax}
+          onChange={e => setPriceMax(Number(e.target.value))}
+          className="h-11 w-full accent-navy"
+        />
+        <div className="flex justify-between text-xs text-muted-foreground" aria-hidden>
+          <Money amount={1000} /><Money amount={PRICE_CEILING} />
         </div>
       </div>
-    )
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+        <input type="checkbox" checked={inStockOnly} onChange={e => setInStockOnly(e.target.checked)} className="size-5 accent-navy" />
+        In stock only
+      </label>
+    </div>
+  )
 
   const chips = ([
     category !== "All" && { label: category, clear: () => applyCategory("All") },
@@ -326,126 +354,58 @@ export function ShopGrid({
     saleOnly           && { label: "On sale", clear: () => writeQuery(params => { params.delete("sale") }) },
     priceFiltered      && { label: `Max ₦${priceMax.toLocaleString("en-NG")}`, clear: () => setPriceMax(PRICE_CEILING) },
     inStockOnly        && { label: "In stock", clear: () => setInStockOnly(false) },
-    minRating > 0      && { label: `${minRating}★+`, clear: () => setMinRating(0) },
+    minRating > 0      && { label: `${minRating}★ and up`, clear: () => setMinRating(0) },
   ].filter(Boolean) as { label: string; clear: () => void }[])
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 lg:px-8">
-      <div className="lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start lg:gap-10">
-        <aside className="sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto lg:block">
-          <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground">Filters</p>
-          {filterFields(true)}
+    <div className="mx-auto max-w-7xl px-5 py-8 md:py-12 lg:px-8">
+      <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start lg:gap-12">
+        <aside aria-label="Filters" className="no-scrollbar sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 lg:block">
+          <p className="mb-5 font-serif text-2xl text-navy-deep">Filters</p>
+          {filterFields("side")}
         </aside>
 
-        <div>
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(v => !v)}
-                className={cn(
-                  "flex items-center gap-2 border px-4 py-2.5 text-xs font-medium uppercase tracking-[0.12em] transition-all lg:hidden",
-                  filtersOpen ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground",
-                )}
-              >
-                <SlidersHorizontal className="size-3.5" />
-                Filters
-                {activeCount > 0 && (
-                  <span className="flex size-4 items-center justify-center rounded-full bg-gold text-[9px] font-bold text-gold-foreground">{activeCount}</span>
-                )}
-              </button>
-              {activeCount > 0 && (
-                <button type="button" onClick={clearAll} className="flex items-center gap-1 text-xs font-light text-muted-foreground transition-colors hover:text-foreground">
-                  <X className="size-3.5" /> Clear all
-                </button>
-              )}
-              <p className="text-xs font-light text-muted-foreground">
-                {loading ? "Loading…" : `${filtered.length} product${filtered.length !== 1 ? "s" : ""}`}
-              </p>
-            </div>
-
-            <div className="relative">
-              <select
-                value={sort}
-                onChange={e => setSort(e.target.value)}
-                className="cursor-pointer appearance-none border border-border bg-background px-4 py-2.5 pr-8 text-xs font-light outline-none transition-colors focus:border-foreground"
-              >
-                {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </div>
-
-          {filtersOpen && (
-            <div className="lg:hidden">
-              <button
-                type="button"
-                aria-label="Close filters"
-                onClick={() => setFiltersOpen(false)}
-                className="atelier-menu fixed inset-0 z-[60] bg-foreground/30"
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Filters"
-                className="atelier-menu fixed inset-y-0 left-0 z-[70] flex w-[min(100%,22rem)] flex-col bg-background shadow-[0_16px_40px_-24px_rgba(41,48,73,0.45)]"
-              >
-                <div className="flex items-center justify-between border-b border-border px-4 py-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em]">Filters</p>
-                  <button type="button" onClick={() => setFiltersOpen(false)} aria-label="Close filters" className="text-muted-foreground">
-                    <X className="size-4" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  {filterFields(true)}
-                </div>
-                <div className="border-t border-border p-4">
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen(false)}
-                    className="w-full bg-foreground py-3.5 text-xs font-medium uppercase tracking-[0.16em] text-background"
-                  >
-                    {loading ? "Show products" : `Show ${filtered.length} product${filtered.length === 1 ? "" : "s"}`}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="min-w-0">
+          <ShopToolbar
+            countLabel={countLabel}
+            activeCount={activeCount}
+            sort={sort}
+            onSort={setSort}
+            onOpenFilters={() => setFiltersOpen(true)}
+          />
 
           {activeCount > 0 && (
-            <div className="mb-5 flex flex-wrap gap-2">
+            <div className="mb-6 flex flex-wrap items-center gap-2">
               {chips.map(chip => (
                 <button
                   key={chip.label}
                   type="button"
                   onClick={chip.clear}
-                  className="flex items-center gap-1.5 border border-gold/40 bg-lavender px-3 py-1 text-[11px] font-light text-gold transition-all hover:bg-secondary"
+                  aria-label={`Remove filter: ${chip.label}`}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-navy/20 bg-secondary px-3 text-sm text-navy-deep transition-colors hover:border-navy"
                 >
-                  {chip.label} <X className="size-3" />
+                  {chip.label} <X aria-hidden className="size-3.5" />
                 </button>
               ))}
+              <button type="button" onClick={clearAll} className="min-h-9 px-2 text-sm text-navy underline underline-offset-4">
+                Clear all
+              </button>
             </div>
           )}
 
           {loading && filtered.length === 0 ? (
-            <div className="grid grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 xl:grid-cols-4">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="space-y-3">
-                  <div className="aspect-square animate-pulse bg-muted/40" />
-                  <div className="h-3 w-2/3 animate-pulse bg-muted/40" />
-                  <div className="h-3 w-1/3 animate-pulse bg-muted/30" />
-                </div>
-              ))}
-            </div>
+            <ProductGridSkeleton count={8} className={GRID} />
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="font-serif text-2xl font-medium text-muted-foreground">No products match your filters.</p>
-              <button type="button" onClick={clearAll} className="mt-4 text-sm font-light text-gold underline underline-offset-2">
-                Clear all filters
-              </button>
+            <div className="flex flex-col items-start gap-4 border-t border-border py-16">
+              <p className="font-serif text-2xl text-navy-deep">No products match these filters.</p>
+              <Button variant="outline" onClick={clearAll}>Clear all filters</Button>
             </div>
           ) : (
-            <div className={cn("atelier-shop-grid grid grid-cols-2 items-start gap-x-5 gap-y-10 sm:grid-cols-3 xl:grid-cols-4", loading && "opacity-60")}>
+            <div
+              ref={gridRef}
+              className={cn(GRID, "transition-opacity duration-300 ease-atelier", loading && "opacity-60")}
+              aria-busy={loading}
+            >
               {filtered.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}
@@ -453,34 +413,27 @@ export function ShopGrid({
           )}
         </div>
       </div>
-    </div>
-  )
-}
 
-function FilterSelect({ label, value, onChange, options, filterKey, highlighted }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options: string[]
-  filterKey?: string
-  highlighted?: boolean
-}) {
-  return (
-    <div
-      data-shop-filter={filterKey}
-      className={cn(highlighted && "ring-1 ring-gold ring-offset-2")}
-    >
-      <p className="mb-2 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">{label}</p>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="w-full cursor-pointer appearance-none border border-border bg-background px-3 py-2.5 pr-8 text-xs font-light outline-none transition-colors focus:border-foreground"
-        >
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      </div>
+      {/* Mobile filters */}
+      <Sheet
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        side="bottom"
+        title="Filters"
+        className="lg:hidden"
+        footer={
+          <div className="flex gap-3">
+            {activeCount > 0 && (
+              <Button variant="outline" onClick={clearAll}>Clear</Button>
+            )}
+            <Button block onClick={() => setFiltersOpen(false)}>
+              {loading ? "Show products" : `Show ${filtered.length} product${filtered.length === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        }
+      >
+        {filterFields("sheet")}
+      </Sheet>
     </div>
   )
 }

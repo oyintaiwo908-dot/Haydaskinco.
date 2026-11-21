@@ -1,14 +1,28 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-heading: var(--font-cormorant), 'Georgia', serif;
-  --font-serif: var(--font-cormorant), 'Georgia', serif;
-  --font-sans: var(--font-dm-sans), var(--font-geist-sans), 'Geist Fallback';
-  --font-mono: var(--font-geist-mono), 'Geist Mono Fallback';
+  /* Every var() has a fallback: one undefined font variable used to void the
+     whole --font-sans stack and the site rendered in the browser serif. */
+  --font-heading: var(--font-cormorant, Georgia), Georgia, serif;
+  --font-serif: var(--font-cormorant, Georgia), Georgia, serif;
+  --font-sans: var(--font-geist-sans, ui-sans-serif), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono, ui-monospace), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Porcelain Atelier palette */
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-porcelain: var(--porcelain);
+  --color-blush: var(--blush);
+  --color-rose: var(--rose);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-on-dark: var(--on-dark);
+  --radius-control: 2px;
+  --ease-atelier: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-float: 0 24px 60px -32px rgb(31 37 56 / 0.45);
   --color-gold: var(--gold);
   --color-gold-foreground: var(--gold-foreground);
   --color-lavender: var(--lavender);
@@ -69,20 +83,34 @@
   --card-foreground: oklch(0.15 0 0);            /* ink */
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0 0);
-  --primary: oklch(0.15 0 0);                    /* ink */
-  --primary-foreground: oklch(1 0 0);            /* paper */
+  /* Porcelain Atelier. Contrast ratios are against white unless noted. */
+  --navy: #293049;                               /* brand, 13.0:1 */
+  --navy-deep: #1F2538;                          /* dark bands, hover, 15.2:1 */
+  --porcelain: #F7F3F1;                          /* product stage, quiet bands */
+  --blush: #FACBD3;                              /* surface and glow only, never text */
+  --rose: #A8546A;                               /* sale and accent text, 5.07:1 */
+  --success: #047857;                            /* 5.48:1 */
+  --warning: #B45309;                            /* 5.02:1 */
+  --on-dark: #FFFFFF;                            /* text on navy surfaces */
+  --primary: var(--navy);                        /* primary CTA is navy (owner decision) */
+  --primary-foreground: #FFFFFF;
   --secondary: #FDF0F3;                          /* blush */
   --secondary-foreground: oklch(0.15 0 0);       /* ink */
   --muted: #F8DCE2;                              /* blush tint */
-  --muted-foreground: oklch(0.66 0 0);           /* #A8A8A8 silver-grey */
+  --muted-foreground: #5B6176;                   /* 6.15:1 on white, 5.54:1 on --secondary, 4.78:1 on --muted (was #929292, 3.11:1) */
   --accent: #FACBD3;                             /* blush */
   --accent-foreground: #293049;                  /* navy */
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: #F0B8C3;                             /* blush border */
-  --input: #F0B8C3;
-  --ring: #293049;                               /* navy */
-  /* navy lives on --gold so existing text-gold / bg-gold classes stay correct */
-  --gold: #293049;                               /* navy */
+  --destructive: #B42318;                        /* error ink: 6.57:1 white, 5.96:1 porcelain, 5.5:1 on its 5% tint */
+  --border: #F0B8C3;                             /* decorative hairlines only */
+  --input: #8F8796;                              /* form field borders, 3.46:1 (WCAG 1.4.11) */
+  --ring: var(--navy);                           /* focus ring */
+  --focus-halo: #FFFFFF;                         /* separates the ring from dark surfaces */
+  /* Radius utilities (rounded-sm … rounded-4xl) derive from --radius. It was never
+     defined, so they computed to 0. Keep that square look explicitly; use
+     rounded-control (2px) for new controls. */
+  --radius: 0rem;
+  /* Legacy alias: navy lives on --gold so existing text-gold / bg-gold classes stay correct */
+  --gold: var(--navy);
   --gold-foreground: #FFFFFF;                    /* paper */
   --lavender: #FACBD3;                           /* blush */
   --lavender-foreground: #293049;                /* navy */
@@ -104,8 +132,6 @@
   --sidebar-accent-foreground: #293049;
   --sidebar-border: #F0B8C3;
   --sidebar-ring: #293049;
-  --atelier-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
-  --atelier-duration: 800ms;
 }
 
 .dark {
@@ -152,44 +178,61 @@
   }
   html {
     @apply font-sans;
+    /* Reserve the scrollbar so locking scroll under a sheet does not shift the page (Windows). */
+    scrollbar-gutter: stable;
+  }
+  /* Cormorant's default old-style figures make "₦0" read as "No" and prices bounce. */
+  .font-serif {
+    font-variant-numeric: lining-nums;
   }
 }
 
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
+/* ─── Accessibility baseline (unlayered on purpose: it must beat utilities such
+   as `outline-none`, which ~30 storefront controls use) ───────────────────── */
+
+/* Visible focus everywhere. The white halo fills the outline offset so the navy
+   ring stays visible on navy and image surfaces. Opt out only with a
+   replacement style via [data-focus="custom"]. */
+:where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]):focus-visible:not([data-focus="custom"]) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-halo);
 }
 
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+/* For controls clipped by an overflow-hidden parent */
+.focus-inset:focus-visible {
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px var(--focus-halo);
+}
+
+/* Reduced motion: stop movement everywhere, keep end states. Spinners keep
+   turning because they report status. */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* Native <dialog> sheets lock page scroll while open */
+html:has(dialog.sheet[open]) {
+  overflow: hidden;
 }
 
 @layer utilities {
-  .animate-marquee {
-    animation: marquee 30s linear infinite;
-  }
-  .animate-fade-up {
-    animation: fade-up 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  .animate-fade-in {
-    animation: fade-in 1.2s ease both;
-  }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -200,18 +243,9 @@
 }
 
 @layer components {
+  /* Legacy form inputs (login, contact, settings, admin): same look as components/ui/field.tsx */
   .input-field {
-    @apply w-full border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40;
-  }
-  /* Soft crimson surfaces — use instead of bg-gold/10 or bg-muted/30 */
-  .surface-muted {
-    @apply bg-secondary;
-  }
-  .surface-accent {
-    @apply bg-lavender;
-  }
-  .surface-accent-badge {
-    @apply border border-gold/40 bg-lavender text-gold;
+    @apply w-full rounded-control border border-input bg-background px-4 py-3 text-base text-foreground transition-colors placeholder:text-muted-foreground hover:border-navy aria-[invalid=true]:border-destructive;
   }
 }
 
@@ -320,150 +354,1271 @@
   }
 }
 
-/* Atelier — slow storefront motion. No overshoot. */
-@keyframes atelier-rise {
+/* Scroll reveal. Content is visible by default (no JS, no hidden server
+   render). Where scroll-driven animations exist, the block rises in over its
+   first 96px of entry. Browsers without them simply show it. */
+@keyframes atelier-reveal {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    translate: 0 12px;
   }
 }
 
-@keyframes atelier-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .atelier-reveal {
+      animation: atelier-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 96px;
+    }
+  }
 }
 
-@keyframes atelier-shift {
-  from { transform: translateY(8px); }
-  to { transform: translateY(0); }
+/* ─── Motion system ────────────────────────────────────────────────────────
+   Rule: anything that moves continuously or on scroll animates transform or opacity only,
+   on its own layer. Never an animated gradient, filter, blur, mask or custom property
+   (the e2e "perf" project holds every page to 60 fps idle). */
+:root {
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Spring curves as CSS linear() (no JS): a soft overshoot and a firmer settle. */
+  --spring-soft: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.106 26%, 1.1 28%, 1.034 37.3%, 1.006 45.2%, 0.993 53.4%, 1 80%);
+  --spring-firm: linear(0, 0.034 1.3%, 0.141 2.8%, 0.53 7.6%, 0.769 11%, 0.927 14.8%, 1.014 18.6%, 1.045 22.6%, 1.048 25.6%, 1.026 33.4%, 1.002 43.6%, 0.998 55%, 1);
 }
 
-.atelier-reveal {
-  opacity: 0;
-  transform: translateY(12px);
-  transition:
-    opacity var(--atelier-duration) var(--atelier-ease),
-    transform var(--atelier-duration) var(--atelier-ease);
+/* Light field: soft blobs (a radial gradient rastered once each) that drift by translate and
+   scale. Kept under half the hero wide: blob area is what the compositor fills every frame
+   (70%-wide blobs held idle Chrome at ~60-120 fps in software; these sizes measure ~175). Colours come from the slide (--f1..--f3). Paused off-screen and under reduced motion. */
+.light-field {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.light-field > span {
+  position: absolute;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  will-change: transform;
+}
+.light-field > span:nth-child(1) {
+  width: 48%;
+  left: 46%;
+  top: -12%;
+  background: radial-gradient(closest-side, var(--f1, rgb(250 203 211 / 0.6)), transparent 72%);
+  animation: field-a 26s ease-in-out infinite alternate;
+}
+.light-field > span:nth-child(2) {
+  width: 42%;
+  left: -6%;
+  top: 34%;
+  background: radial-gradient(closest-side, var(--f2, rgb(92 107 134 / 0.7)), transparent 70%);
+  animation: field-b 31s ease-in-out infinite alternate;
+}
+.light-field > span:nth-child(3) {
+  width: 34%;
+  left: 58%;
+  top: 52%;
+  background: radial-gradient(closest-side, var(--f3, rgb(255 255 255 / 0.4)), transparent 70%);
+  animation: field-c 23s ease-in-out infinite alternate;
+}
+@keyframes field-a {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate(-22%, 18%) scale(1.18) rotate(40deg); }
+  100% { transform: translate(-8%, -6%) scale(0.9) rotate(80deg); }
+}
+@keyframes field-b {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(26%, -16%) scale(1.22); }
+  100% { transform: translate(12%, 10%) scale(0.94); }
+}
+@keyframes field-c {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30%, -24%) scale(0.85); }
+  100% { transform: translate(-12%, 8%) scale(1.16); }
+}
+.hero-slide:not([data-active]) .light-field > span,
+[data-offscreen] .light-field > span {
+  animation-play-state: paused;
 }
 
-.atelier-reveal.is-in {
-  opacity: 1;
-  transform: translateY(0);
+/* Static grain over the field: rastered once, never animated. */
+.hero-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--grain);
 }
 
-.atelier-hero-copy {
-  animation: atelier-rise 800ms var(--atelier-ease) both;
+/* Rewards band and other dark surfaces reuse the field. */
+.hero-light {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.atelier-hero-panel {
-  animation: atelier-fade 800ms var(--atelier-ease) 280ms both;
+/* ─── Home hero (components/home-hero-slider.tsx) ───────────────────────── */
+.hero-stage {
+  display: grid;
+  touch-action: pan-y;
 }
-
-.atelier-hero-shift {
-  animation: atelier-shift 800ms var(--atelier-ease) both;
-}
-
-.atelier-crossfade {
-  transition: opacity 800ms var(--atelier-ease);
-}
-
-.atelier-nav {
-  transition:
-    background-color 800ms var(--atelier-ease),
-    box-shadow 800ms var(--atelier-ease),
-    border-color 800ms var(--atelier-ease),
-    backdrop-filter 800ms var(--atelier-ease);
-}
-
-.atelier-dropdown {
+.hero-slide {
+  grid-area: 1 / 1;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   opacity: 0;
   visibility: hidden;
-  pointer-events: none;
+  will-change: opacity;
   transition:
-    opacity 700ms var(--atelier-ease),
-    visibility 0s linear 700ms;
+    opacity 1100ms var(--ease-out-expo),
+    visibility 0s linear 1100ms;
 }
-
-.atelier-dropdown.is-open {
+.hero-slide[data-active] {
+  z-index: 1;
   opacity: 1;
   visibility: visible;
-  pointer-events: auto;
   transition:
-    opacity 700ms var(--atelier-ease),
-    visibility 0s linear 0s;
+    opacity 900ms var(--ease-out-expo),
+    visibility 0s;
 }
 
-.atelier-menu {
-  animation: atelier-fade 700ms var(--atelier-ease) both;
+/* Headline: each line rises out of its own mask. */
+.hero-line-mask {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.1em;
+  margin-bottom: -0.1em;
 }
-
-.atelier-card-frame {
-  transition: border-color 800ms var(--atelier-ease);
+.hero-line {
+  display: block;
+  transform: translateY(108%);
+  transition: transform 700ms var(--ease-out-expo);
 }
-
-.group:hover .atelier-card-frame,
-.group:focus-within .atelier-card-frame {
-  border-color: #293049;
+.hero-slide[data-active] .hero-line {
+  transform: none;
+  transition: transform 1100ms var(--ease-out-expo) calc(220ms + var(--i, 0) * 120ms);
 }
-
-.atelier-card-media {
-  transition: transform 800ms var(--atelier-ease);
-}
-
-.group:hover .atelier-card-media,
-.group:focus-within .atelier-card-media {
-  transform: scale(1.03);
-}
-
-.atelier-card-name {
-  background-image: linear-gradient(#293049, #293049);
-  background-repeat: no-repeat;
-  background-position: center calc(100% - 1px);
-  background-size: 0 1px;
-  padding-bottom: 3px;
+.hero-fade {
+  opacity: 0;
+  transform: translateY(16px);
   transition:
-    background-size 750ms var(--atelier-ease),
-    color 750ms var(--atelier-ease);
+    opacity 500ms var(--ease-out-expo),
+    transform 500ms var(--ease-out-expo);
+}
+.hero-slide[data-active] .hero-fade {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 900ms var(--ease-out-expo) calc(420ms + var(--i, 0) * 110ms),
+    transform 900ms var(--ease-out-expo) calc(420ms + var(--i, 0) * 110ms);
+}
+.hero-product {
+  opacity: 0;
+  transform: translate3d(48px, 12px, 0) scale(0.94);
+  transition:
+    opacity 600ms var(--ease-out-expo),
+    transform 700ms var(--ease-out-expo);
+}
+.hero-slide[data-active] .hero-product {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 1000ms var(--ease-out-expo) 120ms,
+    transform 1400ms var(--spring-soft) 120ms;
+}
+/* First paint: the active slide plays its entrance once. */
+@starting-style {
+  .hero-slide[data-active] .hero-line { transform: translateY(108%); }
+  .hero-slide[data-active] .hero-fade { opacity: 0; transform: translateY(16px); }
+  .hero-slide[data-active] .hero-product { opacity: 0; transform: translate3d(48px, 12px, 0) scale(0.94); }
 }
 
-.group:hover .atelier-card-name,
-.group:focus-within .atelier-card-name {
-  background-size: 2.75rem 1px;
+.hero-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+/* Soft floor shadow under the panel (static). */
+.hero-floor {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -34px;
+  height: 56px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(31 37 56 / 0.42), transparent);
+}
+.hero-chip {
+  will-change: transform;
+}
+.hero-seal {
+  animation: seal-spin 28s linear infinite;
+  will-change: transform;
+}
+@keyframes seal-spin {
+  to { rotate: 1turn; }
+}
+[data-offscreen] .hero-seal,
+.hero-slide:not([data-active]) .hero-seal {
+  animation-play-state: paused;
 }
 
-.atelier-shop-grid {
-  transition: opacity 700ms var(--atelier-ease);
+/* One sheen pass across the photo when its slide arrives. */
+.hero-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.6) 50%, transparent 62%);
+  translate: -120% 0;
+}
+@keyframes hero-sheen {
+  to { translate: 120% 0; }
+}
+.hero-slide[data-active] .hero-panel::after {
+  animation: hero-sheen 1.6s var(--ease-out-expo) 0.7s both;
+}
+
+/* Light-text slides: a navy scrim that holds --scrim alpha across the copy band, then fades
+   out smoothly. Top-to-bottom on phones (copy above the product), left-to-right on desktop.
+   Keeps white copy >= 4.5:1 on every slide. */
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--grain), linear-gradient(
+    to bottom,
+    rgb(31 37 56 / var(--scrim, 0.5)) 0%,
+    rgb(31 37 56 / var(--scrim, 0.5)) 42%,
+    rgb(31 37 56 / calc(var(--scrim, 0.5) * 0.5)) 60%,
+    rgb(31 37 56 / 0) 80%
+  );
+}
+@media (min-width: 1024px) {
+  .hero-scrim {
+    background: var(--grain), linear-gradient(
+      to right,
+      rgb(31 37 56 / var(--scrim, 0.5)) 0%,
+      rgb(31 37 56 / var(--scrim, 0.5)) 40%,
+      rgb(31 37 56 / calc(var(--scrim, 0.5) * 0.5)) 56%,
+      rgb(31 37 56 / 0) 74%
+    );
+  }
+}
+@keyframes hero-progress {
+  from { scale: 0 1; }
+  to { scale: 1 1; }
+}
+.hero-progress-run {
+  animation: hero-progress linear both;
+}
+
+/* Button sheen: a light bar crosses the CTA on hover (transform only). */
+.btn-sheen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.5) 50%, transparent 70%);
+  translate: -110% 0;
+  transition: translate 700ms var(--ease-out-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-sheen:hover::after {
+    translate: 110% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .atelier-reveal,
-  .atelier-hero-copy,
-  .atelier-hero-panel,
-  .atelier-hero-shift,
-  .atelier-menu {
+  .light-field > span,
+  .hero-seal,
+  .hero-slide[data-active] .hero-panel::after {
+    animation: none !important;
+  }
+  .hero-slide,
+  .hero-slide[data-active],
+  .hero-line,
+  .hero-slide[data-active] .hero-line,
+  .hero-fade,
+  .hero-slide[data-active] .hero-fade,
+  .hero-product,
+  .hero-slide[data-active] .hero-product {
+    transition: none !important;
+  }
+}
+/* Save-Data and low-power hints: keep the field still. */
+@media (prefers-reduced-data: reduce) {
+  .light-field > span,
+  .hero-seal {
+    animation: none !important;
+  }
+}
+html[data-save-data] .light-field > span,
+html[data-save-data] .hero-seal {
+  animation: none !important;
+}
+
+/* ─── Naira sign (components/ui/price.tsx <Money>) ─────────────────────────
+   Geist has no ₦ glyph and next/font's metric fallback is local Arial, so ₦ would come
+   from whatever system font a device has. The symbol gets a deliberate stack instead:
+   Cormorant (latin-ext file, preloaded, carries ₦) with its metric-matched fallback. */
+.currency {
+  font-family: var(--font-cormorant, Georgia), Georgia, serif;
+  font-weight: 500;
+  font-style: normal;
+  font-size: 1.15em;
+  font-variant-numeric: lining-nums;
+  margin-right: 0.04em;
+}
+
+/* ─── Product card (components/product-card.tsx) ─────────────────────────── */
+.card-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(70% 55% at 30% 18%, rgb(255 255 255 / 0.55), transparent 70%);
+  transition: opacity 320ms var(--ease-atelier);
+}
+@media (hover: hover) and (pointer: fine) {
+  .group:hover > [data-card-media] .card-spotlight {
+    opacity: 1;
+  }
+}
+.card-link {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: text-decoration-color 200ms var(--ease-atelier);
+}
+.group:hover .card-link {
+  text-decoration-color: currentColor;
+}
+/* The stretched link's ring wraps the whole card */
+.card-link:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+article:has(> div > h3 > .card-link:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+/* ─── Announcement rotator (components/announcement-bar.tsx) ─────────────── */
+.announce-item {
+  opacity: 0;
+  animation-timing-function: var(--ease-atelier);
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+.announce:hover .announce-item,
+.announce:has(.announce-pause input:checked) .announce-item {
+  animation-play-state: paused;
+}
+.announce-pause:has(input:focus-visible) {
+  outline: 2px solid var(--on-dark);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .announce-item {
+    animation: none !important;
+  }
+  .announce-item:first-child {
+    opacity: 1;
+  }
+  .announce-pause {
+    visibility: hidden;
+  }
+}
+
+/* Pending navigation hint on cards (components/link-pending-hint.tsx) */
+@keyframes link-pending {
+  from {
+    scale: 0 1;
+  }
+  to {
+    scale: 0.9 1;
+  }
+}
+.link-pending.is-pending {
+  opacity: 1;
+  animation: link-pending 1.6s var(--ease-out-expo) both;
+}
+
+/* Cart lines and search results rise in, staggered via inline animation-delay */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+.cart-line,
+.search-results > li {
+  animation: rise-in 360ms var(--ease-out-expo) both;
+}
+
+/* Journal reading progress: scroll-linked, no JS. Hidden where unsupported or motion is reduced. */
+.reading-progress {
+  display: none;
+}
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reading-progress {
+      display: block;
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 45;
+      height: 2px;
+      background: var(--navy);
+      transform-origin: 0 50%;
+      animation: reading-progress linear both;
+      animation-timeline: scroll(root block);
+    }
+  }
+}
+@keyframes reading-progress {
+  from {
+    scale: 0 1;
+  }
+  to {
+    scale: 1 1;
+  }
+}
+
+/* Desktop nav panels fade down on open */
+@keyframes nav-panel-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+.nav-panel {
+  animation: nav-panel-in 200ms var(--ease-out-expo);
+}
+
+/* Skip link: visible only when focused */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 100;
+  translate: 0 -200%;
+  background: var(--navy);
+  color: var(--on-dark);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.skip-link:focus-visible {
+  translate: 0 0;
+}
+
+/* WhatsApp button lifts above the mobile buy bar while it shows */
+html:has([data-buy-bar="visible"]) {
+  --fab-lift: 4.5rem;
+}
+
+/* ─── Sheet: native <dialog> side, bottom, top or centre panel ─────────────
+   Entry uses @starting-style; exit keeps display/overlay alive with
+   allow-discrete. Without support it opens and closes instantly. */
+dialog.sheet {
+  --sheet-duration: 480ms;
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-float);
+  transition:
+    translate var(--sheet-duration) var(--ease-out-expo),
+    opacity var(--sheet-duration) var(--ease-out-expo),
+    scale var(--sheet-duration) var(--ease-out-expo),
+    display var(--sheet-duration),
+    overlay var(--sheet-duration);
+  transition-behavior: allow-discrete;
+}
+
+dialog.sheet[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.sheet[data-side="right"] {
+  inset-inline-start: auto;
+  width: min(100%, 28rem);
+  translate: 100% 0;
+}
+dialog.sheet[data-side="left"] {
+  inset-inline-end: auto;
+  width: min(100%, 22rem);
+  translate: -100% 0;
+}
+dialog.sheet[data-side="bottom"] {
+  inset-block-start: auto;
+  height: auto;
+  max-height: 90dvh;
+  translate: 0 100%;
+}
+dialog.sheet[data-side="top"] {
+  inset-block-end: auto;
+  height: auto;
+  max-height: 85dvh;
+  translate: 0 -100%;
+}
+dialog.sheet[data-side="center"] {
+  inset: 0;
+  margin: auto;
+  width: min(calc(100% - 2rem), 28rem);
+  height: fit-content;
+  max-height: calc(100dvh - 2rem);
+  opacity: 0;
+  scale: 0.98;
+  --sheet-duration: 320ms;
+}
+
+dialog.sheet[open][data-side] {
+  translate: 0 0;
+  opacity: 1;
+  scale: 1;
+}
+
+@starting-style {
+  dialog.sheet[open][data-side="right"] { translate: 100% 0; }
+  dialog.sheet[open][data-side="left"] { translate: -100% 0; }
+  dialog.sheet[open][data-side="bottom"] { translate: 0 100%; }
+  dialog.sheet[open][data-side="top"] { translate: 0 -100%; }
+  dialog.sheet[open][data-side="center"] { opacity: 0; scale: 0.98; }
+}
+
+dialog.sheet::backdrop {
+  background-color: rgb(31 37 56 / 0);
+  transition:
+    background-color var(--sheet-duration) var(--ease-out-expo),
+    display var(--sheet-duration),
+    overlay var(--sheet-duration);
+  transition-behavior: allow-discrete;
+}
+dialog.sheet[open]::backdrop {
+  background-color: rgb(31 37 56 / 0.4);
+}
+@starting-style {
+  dialog.sheet[open]::backdrop {
+    background-color: rgb(31 37 56 / 0);
+  }
+}
+
+/* ─── Disclosure: native <details>; height animates where interpolate-size
+   exists, otherwise it opens instantly ───────────────────────────────────── */
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    details.disclosure {
+      interpolate-size: allow-keywords;
+    }
+    details.disclosure::details-content {
+      height: 0;
+      overflow: clip;
+      transition:
+        height 320ms var(--ease-atelier),
+        content-visibility 320ms;
+      transition-behavior: allow-discrete;
+    }
+    details.disclosure[open]::details-content {
+      height: auto;
+    }
+  }
+}
+details.disclosure > summary {
+  list-style: none;
+}
+details.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Controls that only work with JavaScript (hero carousel buttons). */
+@media (scripting: none) {
+  .js-only { display: none !important; }
+}
+
+/* ─── Header (components/site-navbar.tsx) ──────────────────────────────────
+   Glass that appears on scroll; the bar condenses by translating (not by changing height),
+   the logo scales down. Transform and opacity only. */
+.site-header {
+  transition: translate 500ms var(--ease-out-expo);
+}
+.site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--background);
+  transition: opacity 400ms var(--ease-out-expo);
+}
+.site-header[data-condensed] {
+  translate: 0 -8px;
+}
+.site-header[data-condensed]::before {
+  opacity: 0.78;
+}
+.site-header[data-condensed] .header-inner {
+  translate: 0 4px;
+}
+.header-inner {
+  transition: translate 500ms var(--ease-out-expo);
+}
+.header-logo {
+  transform-origin: center;
+  transition: scale 500ms var(--spring-firm);
+}
+@media (min-width: 1024px) {
+  .header-logo { transform-origin: left center; }
+}
+.site-header[data-condensed] .header-logo {
+  scale: 0.82;
+}
+/* Underline wipe for nav links and inline links */
+.nav-wipe {
+  position: relative;
+}
+.nav-wipe::after {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.55rem;
+  height: 1px;
+  background: currentColor;
+  scale: 0 1;
+  transform-origin: right center;
+  transition: scale 420ms var(--ease-out-expo);
+}
+.nav-wipe:hover::after,
+.nav-wipe[aria-expanded="true"]::after {
+  scale: 1 1;
+  transform-origin: left center;
+}
+.link-wipe {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 100% / 0 1px;
+  transition: background-size 420ms var(--ease-out-expo);
+}
+.link-wipe:hover,
+a:hover > .link-wipe,
+a:focus-visible > .link-wipe {
+  background-size: 100% 1px;
+}
+/* Cart count springs when it changes */
+@keyframes badge-pop {
+  0% { scale: 0.4; }
+  60% { scale: 1.25; }
+  100% { scale: 1; }
+}
+.badge-pop {
+  animation: badge-pop 520ms var(--spring-soft) both;
+}
+
+/* Mega menu: full-width panel, links rise in with a stagger, featured image unveils */
+@keyframes mega-in {
+  from { opacity: 0; translate: 0 -10px; }
+}
+@keyframes mega-item-in {
+  from { opacity: 0; translate: 0 10px; }
+}
+@keyframes mega-image-in {
+  from { opacity: 0; scale: 1.08; }
+}
+.mega-panel {
+  animation: mega-in 360ms var(--ease-out-expo) both;
+}
+.mega-item {
+  animation: mega-item-in 520ms var(--ease-out-expo) both;
+  animation-delay: calc(60ms + var(--i, 0) * 28ms);
+}
+.mega-image {
+  animation: mega-image-in 900ms var(--ease-out-expo) both;
+}
+
+/* Full-screen mobile menu with large type and staggered links */
+dialog.sheet.mobile-menu[data-side="left"] {
+  width: 100%;
+}
+@keyframes mm-in {
+  from { opacity: 0; translate: -18px 0; }
+}
+dialog.sheet.mobile-menu[open] .mm-item {
+  animation: mm-in 560ms var(--ease-out-expo) both;
+  animation-delay: calc(140ms + var(--i, 0) * 45ms);
+}
+
+/* ─── Product card ─────────────────────────────────────────────────────── */
+.card-media img {
+  transition: scale 1100ms var(--ease-out-expo), opacity 600ms var(--ease-out-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .card-media img { scale: 1.06; }
+  .group:hover .card-media .card-alt { opacity: 1; }
+}
+.card-alt { opacity: 0; }
+/* Press state on touch */
+.group:active .card-media {
+  scale: 0.985;
+}
+.card-media {
+  transition: scale 300ms var(--spring-firm);
+}
+/* Quick-add springs in on hover */
+@media (hover: hover) and (pointer: fine) {
+  .card-quick {
+    opacity: 0;
+    scale: 0.6;
+    transition: opacity 260ms var(--ease-out-expo), scale 520ms var(--spring-soft), background-color 200ms, color 200ms, border-color 200ms;
+  }
+  .group:hover .card-quick,
+  .group:focus-within .card-quick,
+  .card-quick[data-added] {
+    opacity: 1;
+    scale: 1;
+  }
+}
+/* Favourite burst: a ring and six sparks, transform and opacity only */
+.heart-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.heart-burst > i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: var(--rose);
+  opacity: 0;
+  animation: spark 620ms var(--ease-out-expo) both;
+  rotate: calc(var(--i) * 60deg);
+}
+.heart-burst::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--rose);
+  opacity: 0;
+  animation: ring 520ms var(--ease-out-expo) both;
+}
+@keyframes spark {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-20px) scale(0.4); }
+}
+@keyframes ring {
+  0% { opacity: 0.9; scale: 0.4; }
+  100% { opacity: 0; scale: 1.5; }
+}
+@keyframes heart-pop {
+  0% { scale: 1; }
+  30% { scale: 0.7; }
+  100% { scale: 1; }
+}
+.heart-pop {
+  animation: heart-pop 560ms var(--spring-soft);
+}
+
+/* ─── Home: editorial sections ────────────────────────────────────────── */
+/* Statement band: words light up as the band scrolls through (opacity only). */
+.statement-word {
+  opacity: 1;
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .statement-word {
+      animation: word-light linear both;
+      animation-timeline: view();
+      animation-range: cover calc(12% + var(--w, 0) * 1.6%) cover calc(30% + var(--w, 0) * 1.6%);
+    }
+  }
+}
+@keyframes word-light {
+  from { opacity: 0.16; }
+  to { opacity: 1; }
+}
+
+/* Brand marquee: two copies of the list slide left forever; pause on hover or focus. */
+.marquee {
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 48s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee-track,
+.marquee:focus-within .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee { mask-image: none; overflow-x: auto; }
+  .marquee-track { animation: none; }
+  .marquee-track > [aria-hidden] { display: none; }
+}
+
+/* Category tiles: a curtain lifts off the image as it enters; hover zooms and slides the label. */
+.tile-media img {
+  transition: scale 1200ms var(--ease-out-expo);
+}
+.tile-curtain {
+  position: absolute;
+  inset: 0;
+  background: var(--porcelain);
+  transform-origin: top;
+  scale: 1 0;
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .tile-curtain {
+      animation: curtain linear both;
+      animation-timeline: view();
+      animation-range: entry 10% entry 90%;
+    }
+  }
+}
+@keyframes curtain {
+  from { scale: 1 1; }
+  to { scale: 1 0; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover .tile-media img { scale: 1.07; }
+  .tile:hover .tile-arrow { translate: 4px 0; }
+}
+.tile:active .tile-media { scale: 0.985; }
+.tile-media { transition: scale 300ms var(--spring-firm); }
+.tile-arrow { transition: translate 400ms var(--ease-out-expo); }
+
+/* Draggable rail (components/drag-rail.tsx) */
+.rail {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.rail::-webkit-scrollbar { display: none; }
+.rail > * { scroll-snap-align: start; }
+.rail[data-dragging] { scroll-snap-type: none; cursor: grabbing; }
+.rail[data-dragging] * { pointer-events: none; }
+@media (hover: hover) and (pointer: fine) {
+  .rail { cursor: grab; }
+}
+
+/* Ritual: pinned on capable browsers; a plain list everywhere else. */
+.ritual-steps { display: grid; gap: 3rem; }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) and (min-height: 560px) {
+    .ritual { view-timeline: --ritual block; height: calc(var(--steps) * 85svh + 20svh); }
+    .ritual-pin { position: sticky; top: 0; height: 100svh; display: flex; align-items: center; overflow: hidden; }
+    .ritual-steps { display: grid; gap: 0; }
+    .ritual-step { grid-area: 1 / 1; opacity: 0; animation: ritual-step linear both; animation-timeline: --ritual; }
+    .ritual-step:first-child { animation-name: ritual-first; }
+    .ritual-step:last-child { animation-name: ritual-last; }
+    .ritual-step { animation-range: contain calc(var(--k) * 100% / var(--steps)) contain calc((var(--k) + 1) * 100% / var(--steps)); }
+    .ritual-bar { animation: ritual-bar linear both; animation-timeline: --ritual; animation-range: contain 0% contain 100%; transform-origin: top; }
+    .ritual-image { animation: ritual-image linear both; animation-timeline: --ritual; animation-range: contain calc(var(--k) * 100% / var(--steps)) contain calc((var(--k) + 1) * 100% / var(--steps)); }
+  }
+}
+@keyframes ritual-step {
+  0% { opacity: 0; transform: translateY(48px); }
+  18%, 82% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-48px); }
+}
+@keyframes ritual-first {
+  0%, 82% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-48px); }
+}
+@keyframes ritual-last {
+  0% { opacity: 0; transform: translateY(48px); }
+  18%, 100% { opacity: 1; transform: none; }
+}
+@keyframes ritual-bar {
+  from { scale: 1 0; }
+  to { scale: 1 1; }
+}
+@keyframes ritual-image {
+  from { transform: translateY(6%) scale(1.04); }
+  to { transform: translateY(-6%) scale(1); }
+}
+
+/* Parallax image inside a frame (journal feature) */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .parallax-img {
+      animation: parallax linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+  }
+}
+@keyframes parallax {
+  from { transform: translateY(-6%) scale(1.12); }
+  to { transform: translateY(6%) scale(1.12); }
+}
+
+/* Skeleton shimmer: a light bar slides across (transform), not an animated gradient. */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  translate: -100% 0;
+  animation: shimmer 1.4s var(--ease-atelier) infinite;
+}
+@keyframes shimmer {
+  to { translate: 100% 0; }
+}
+
+/* Focus rings ease in */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  transition: outline-offset 180ms var(--ease-out-expo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header, .site-header::before, .header-inner, .header-logo,
+  .mega-panel, .mega-item, .mega-image, .badge-pop,
+  dialog.sheet.mobile-menu[open] .mm-item,
+  .card-media, .card-media img, .card-quick,
+  .heart-burst > i, .heart-burst::before, .heart-pop,
+  .tile-media, .tile-media img, .tile-arrow, .shimmer::after {
     animation: none !important;
     transition: none !important;
-    transform: none !important;
-    opacity: 1 !important;
   }
+}
 
-  .atelier-crossfade,
-  .atelier-dropdown,
-  .atelier-nav,
-  .atelier-card-frame,
-  .atelier-card-name,
-  .atelier-shop-grid {
-    transition: none !important;
+/* ─── View transitions (React <ViewTransition>, app/(storefront)/layout.tsx) ───
+   Short, so navigation never feels blocked: the page lifts out and settles in, the header
+   holds still, and a product image morphs from its card into the PDP gallery. */
+.site-header {
+  view-transition-name: site-header;
+}
+::view-transition-group(*) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-out-expo);
+}
+::view-transition-old(page) {
+  animation: vt-page-out 200ms var(--ease-atelier) both;
+}
+::view-transition-new(page) {
+  animation: vt-page-in 380ms var(--ease-out-expo) both;
+}
+@keyframes vt-page-out {
+  to { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes vt-page-in {
+  from { opacity: 0; transform: translateY(16px); }
+}
+/* The product image: the group morphs position and size; keep both snapshots opaque. */
+::view-transition-old(.product-morph),
+::view-transition-new(.product-morph) {
+  animation-duration: 420ms;
+  height: 100%;
+  object-fit: cover;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
+}
 
-  .atelier-card-media,
-  .group:hover .atelier-card-media,
-  .group:focus-within .atelier-card-media {
-    transform: none !important;
-    transition: none !important;
+/* ─── PDP gallery (components/pdp-gallery.tsx) ───────────────────────────── */
+.gallery-zoom {
+  transform-origin: center;
+  transition: transform 260ms var(--ease-out-expo);
+  will-change: transform;
+}
+.gallery-track[data-dragging] {
+  scroll-snap-type: none;
+  cursor: grabbing;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gallery-zoom { transition: none; }
+}
+
+/* Condensed buy bar: slides up from the bottom on phones, down under the header on desktop. */
+.buy-bar {
+  translate: 0 100%;
+  transition:
+    translate 520ms var(--spring-firm),
+    opacity 300ms var(--ease-out-expo);
+}
+@media (min-width: 1024px) {
+  .buy-bar { translate: 0 -110%; }
+}
+.buy-bar[data-buy-bar="visible"] {
+  translate: 0 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buy-bar { transition: opacity 150ms linear; }
+}
+
+/* ─── Search overlay (components/search-modal.tsx) ─────────────────────── */
+dialog.sheet.search-overlay[data-side="top"] {
+  height: 100dvh;
+  max-height: none;
+}
+@keyframes search-pop {
+  from { opacity: 0; transform: translateY(14px); }
+}
+dialog.sheet.search-overlay[open] .search-pop {
+  animation: search-pop 560ms var(--ease-out-expo) both;
+  animation-delay: calc(160ms + var(--i, 0) * 50ms);
+}
+.search-results > li {
+  animation: search-result-in 520ms var(--spring-soft) both;
+}
+@keyframes search-result-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.sheet.search-overlay[open] .search-pop,
+  .search-results > li { animation: none !important; }
+}
+
+/* ─── Checkout (app/(storefront)/checkout/page.tsx) ────────────────────── */
+.step-fill {
+  transition: transform 700ms var(--ease-out-expo);
+}
+.step-dot {
+  transition: scale 500ms var(--spring-soft), background-color 300ms, color 300ms, border-color 300ms;
+}
+/* Receipt: scalloped paper edges drawn with a repeating gradient (static, no mask). */
+.receipt::before,
+.receipt::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: radial-gradient(circle at 8px 0, transparent 6px, #fff 6.5px) repeat-x;
+  background-size: 16px 10px;
+}
+.receipt::before {
+  top: -9px;
+  rotate: 180deg;
+}
+.receipt::after {
+  bottom: -9px;
+}
+/* The step content swaps in */
+@keyframes step-in {
+  from { opacity: 0; transform: translateX(18px); }
+}
+.step-panel {
+  animation: step-in 480ms var(--ease-out-expo) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-fill, .step-dot { transition: none; }
+  .step-panel { animation: none; }
+}
+
+/* ─── Hero, round two: depth, wipe, scroll cue, scroll parallax ─────────── */
+/* Slide change: a blush band sweeps across the stage. */
+.hero-wipe {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgb(250 203 211 / 0.55) 35%, rgb(253 240 243 / 0.75) 50%, rgb(250 203 211 / 0.55) 65%, transparent 100%);
+  translate: -110% 0;
+  animation: hero-wipe 1100ms var(--ease-out-expo) both;
+  will-change: translate;
+}
+@keyframes hero-wipe {
+  to { translate: 110% 0; }
+}
+
+/* Scroll cue (desktop): a line that draws downward, on a loop. */
+.hero-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 1.75rem;
+  z-index: 6;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  translate: -50% 0;
+  pointer-events: none;
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.hero-scroll-cue > i {
+  display: block;
+  width: 1px;
+  height: 36px;
+  background: currentColor;
+  transform-origin: top;
+  animation: cue-draw 2.2s var(--ease-out-expo) infinite;
+}
+@keyframes cue-draw {
+  0% { scale: 1 0; opacity: 1; }
+  60% { scale: 1 1; opacity: 1; }
+  100% { scale: 1 1; opacity: 0; }
+}
+/* Only from 1280px: there the copy and product columns leave a clear gap at the centre. */
+@media (min-width: 1280px) {
+  .hero-scroll-cue { display: flex; }
+}
+
+/* As the page scrolls, the product drifts up faster than the copy (scroll-linked, translate). */
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-slide[data-active] .hero-product {
+      animation: hero-depth-product linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 90vh;
+    }
+    .hero-scroll-cue {
+      animation: hero-cue-out linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 20vh;
+    }
   }
+}
+@keyframes hero-depth-product {
+  to { translate: 0 -72px; }
+}
+@keyframes hero-cue-out {
+  to { opacity: 0; }
+}
+
+/* ─── Section headings reveal through a mask as they enter (scroll-driven) ── */
+.heading-mask {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+}
+.heading-mask > span {
+  display: block;
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .heading-mask > span {
+      animation: heading-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 80%;
+    }
+  }
+}
+@keyframes heading-rise {
+  from { transform: translateY(105%); }
+}
+
+/* ─── Product cards: a light sheen sweeps the photo on hover ───────────────── */
+.card-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgb(255 255 255 / 0.45) 50%, transparent 65%);
+  translate: -120% 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .card-media::after {
+    translate: 120% 0;
+    transition: translate 900ms var(--ease-out-expo);
+  }
+}
+/* ─── Mobile menu: a navy curtain draws back as it opens ──────────────────── */
+dialog.sheet.mobile-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: var(--navy-deep);
+  translate: 101% 0;
+}
+dialog.sheet.mobile-menu[open]::before {
+  animation: curtain-draw 760ms var(--ease-out-expo) both;
+}
+@keyframes curtain-draw {
+  from { translate: 0 0; }
+  to { translate: 101% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-wipe, .hero-scroll-cue > i, .heading-mask > span,
+  dialog.sheet.mobile-menu[open]::before {
+    animation: none !important;
+  }
+  .hero-wipe { display: none; }
+  .group:hover .card-media::after { transition: none; }
+}
+
+/* ─── Bento (home "Shop by what your skin needs") ───────────────────────── */
+.bento-img {
+  transition: scale 1200ms var(--ease-out-expo);
+}
+.bento-arrow {
+  transition: translate 500ms var(--spring-soft), rotate 500ms var(--spring-soft);
+}
+.bento-sheen {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(250 203 211 / 0.35), transparent 70%);
+  translate: -30% 30%;
+  transition: translate 1200ms var(--ease-out-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bento:hover .bento-img { scale: 1.06; }
+  .bento:hover .bento-arrow { translate: 3px -3px; rotate: 45deg; }
+  .bento:hover .bento-sheen { translate: 20% -20%; }
+}
+.bento:active { scale: 0.99; }
+.bento { transition: scale 300ms var(--spring-firm); }
+@media (prefers-reduced-motion: reduce) {
+  .bento, .bento-img, .bento-arrow, .bento-sheen { transition: none; }
+}
+
+/* ─── Serif figures ───────────────────────────────────────────────────────
+   Cormorant's default old-style figures read "19" as "I9" and "30" as "3o". The rule in
+   @layer base lost to Tailwind's `tabular-nums` utility on the same element (utilities win
+   over base, and that utility rewrites font-variant-numeric), so it is unlayered here and
+   sets Tailwind's figure variable too. Lining and tabular for every serif number context. */
+.font-serif,
+.font-serif *,
+.lining-figures,
+.lining-figures * {
+  --tw-numeric-figure: lining-nums;
+  --tw-numeric-spacing: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+/* In serif display sizes the ₦ takes the digits' size and weight (it is Cormorant too). */
+.font-serif .currency {
+  font-size: 1em;
+  font-weight: inherit;
+  margin-right: 0.03em;
 }

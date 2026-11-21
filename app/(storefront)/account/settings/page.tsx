@@ -314,7 +314,7 @@ export default function AccountSettingsPage() {
                   <MapPin className="size-4 text-muted-foreground" />
                   <span className="text-xs font-medium uppercase tracking-[0.15em]">{addr.label}</span>
                   {addr.is_default && (
-                    <span className="border border-gold/40 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-widest text-gold bg-lavender">
+                    <span className="border border-gold/40 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-widest text-gold bg-lavender">
                       Default
                     </span>
                   )}

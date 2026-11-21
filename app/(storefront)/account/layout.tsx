@@ -42,10 +42,10 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   if (!ready || session === null) {
     return (
       <div className="mx-auto max-w-7xl px-5 py-14 lg:px-8">
-        <div className="mb-8 h-16 max-w-sm animate-pulse rounded-sm bg-muted" />
+        <div className="mb-8 h-16 max-w-sm animate-pulse bg-muted/50" />
         <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
-          <div className="hidden h-64 w-52 shrink-0 animate-pulse rounded-sm bg-muted lg:block" />
-          <div className="h-48 flex-1 animate-pulse rounded-sm bg-muted" />
+          <div className="hidden h-64 w-52 shrink-0 animate-pulse bg-muted/50 lg:block" />
+          <div className="h-48 flex-1 animate-pulse bg-porcelain" />
         </div>
       </div>
     )
@@ -55,62 +55,64 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     <div className="mx-auto max-w-7xl px-5 py-10 md:py-14 lg:px-8">
       {/* Page heading */}
       <div className="mb-8 border-b border-border pb-6">
-        <p className="text-[11px] font-light uppercase tracking-[0.28em] text-gold mb-1.5">My Account</p>
-        <h1 className="font-serif text-3xl font-medium">Welcome back, {session?.firstName ?? "there"}</h1>
-        <p className="mt-1 text-sm font-light text-muted-foreground">Manage your orders, favourites, and details.</p>
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-rose">My account</p>
+        <h1 className="font-serif text-[clamp(2rem,1.6rem+1.6vw,3rem)] font-normal leading-tight text-navy-deep">Welcome back, {session?.firstName ?? "there"}</h1>
+        <p className="mt-2 text-muted-foreground">Manage your orders, favourites and details.</p>
       </div>
 
       <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
         {/* Sidebar nav — desktop */}
         <aside className="shrink-0 lg:w-52">
-          <nav className="hidden lg:block space-y-0.5">
+          <nav aria-label="Account" className="hidden space-y-0.5 lg:block">
             {NAV.map(item => {
               const active = pathname === item.href
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group flex items-center justify-between rounded-sm px-3 py-2.5 text-sm transition-all",
+                    "group flex min-h-11 items-center justify-between px-3 text-sm transition-colors",
                     active
-                      ? "bg-muted font-medium text-foreground"
-                      : "font-light text-muted-foreground hover:bg-muted hover:text-foreground",
+                      ? "bg-porcelain font-medium text-navy-deep"
+                      : "text-muted-foreground hover:bg-porcelain hover:text-foreground",
                   )}
                 >
                   <div className="flex items-center gap-2.5">
-                    <item.icon className={cn("size-4", active ? "text-gold" : "text-muted-foreground group-hover:text-foreground/70")} />
+                    <item.icon aria-hidden className={cn("size-4", active ? "text-navy" : "text-muted-foreground group-hover:text-foreground/70")} />
                     {item.label}
                   </div>
-                  {active && <ChevronRight className="size-3.5 text-gold" />}
+                  {active && <ChevronRight aria-hidden className="size-3.5 text-navy" />}
                 </Link>
               )
             })}
             <button
               type="button"
               onClick={handleSignOut}
-              className="group flex w-full items-center gap-2.5 rounded-sm px-3 py-2.5 text-sm font-light text-muted-foreground transition-all hover:bg-red-50 hover:text-destructive"
+              className="group flex min-h-11 w-full items-center gap-2.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
             >
-              <LogOut className="size-4 text-muted-foreground group-hover:text-destructive" />
+              <LogOut aria-hidden className="size-4 text-muted-foreground group-hover:text-destructive" />
               Sign Out
             </button>
           </nav>
 
           {/* Mobile horizontal scroll nav */}
-          <nav className="flex gap-1 overflow-x-auto no-scrollbar pb-1 lg:hidden">
+          <nav aria-label="Account" className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:hidden">
             {NAV.map(item => {
               const active = pathname === item.href
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "shrink-0 flex items-center gap-1.5 border px-3 py-2 text-[11px] font-light uppercase tracking-[0.12em] transition-all",
+                    "flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border px-3 text-xs font-medium uppercase tracking-[0.12em] transition-colors",
                     active
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
+                      ? "border-navy bg-navy text-primary-foreground"
+                      : "border-input text-foreground hover:border-navy",
                   )}
                 >
-                  <item.icon className="size-3.5" />
+                  <item.icon aria-hidden className="size-3.5" />
                   {item.label}
                 </Link>
               )
@@ -118,9 +120,9 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             <button
               type="button"
               onClick={handleSignOut}
-              className="shrink-0 flex items-center gap-1.5 border border-border px-3 py-2 text-[11px] font-light uppercase tracking-[0.12em] text-muted-foreground transition-all hover:border-destructive hover:text-destructive"
+              className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-input px-3 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
             >
-              <LogOut className="size-3.5" /> Sign Out
+              <LogOut aria-hidden className="size-3.5" /> Sign out
             </button>
           </nav>
         </aside>

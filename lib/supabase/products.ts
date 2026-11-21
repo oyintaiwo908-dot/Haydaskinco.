@@ -45,7 +45,7 @@ export type ProductQuery = {
 
 /** Columns needed for ProductCard / cart add — avoids shipping full PDP blobs on grids. */
 const PRODUCT_CARD_SELECT =
-  "id, name, brand_name, tagline, price, discount_pct, moq, price_tiers, image_url, category, categories, tag, tags, stock, rating, review_count, size, brands(name)"
+  "id, name, brand_name, tagline, price, discount_pct, moq, price_tiers, image_url, image_urls, category, categories, tag, tags, stock, rating, review_count, size, brands(name)"
 
 const PRODUCT_FULL_SELECT = "*, brands(name)"
 
@@ -510,21 +510,6 @@ export async function getProductIds(): Promise<string[]> {
   if (!data) return []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return data.map((r: any) => r.id as string)
-}
-
-export async function getFeaturedProducts(limit = 8): Promise<Product[]> {
-  const tagged = await getProductsByTag(["New", "Bestseller"], limit)
-  if (tagged.length >= limit) return tagged
-
-  const more = await queryProducts({ sort: "rating", limit: limit * 2 })
-  const seen = new Set(tagged.map(p => p.id))
-  const filled = [...tagged]
-  for (const p of more) {
-    if (seen.has(p.id)) continue
-    filled.push(p)
-    if (filled.length >= limit) break
-  }
-  return filled.slice(0, limit)
 }
 
 /** Published products matching one or more product tags (e.g. Bestseller, New). */

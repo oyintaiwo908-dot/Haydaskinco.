@@ -148,25 +148,27 @@ export default function LoginPage() {
 
             <form onSubmit={handleSubmit} className="w-full space-y-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+                <label htmlFor="login-email" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
                   Email Address
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
+                    id="login-email"
                     type="email"
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                    className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                   />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+                  <label htmlFor="login-password" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
                     Password
                   </label>
                   <Link href="/forgot-password" className="text-[11px] font-light text-gold underline-offset-2 hover:underline">
@@ -176,12 +178,14 @@ export default function LoginPage() {
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
+                    id="login-password"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                    className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                   />
                   <button
                     type="button"

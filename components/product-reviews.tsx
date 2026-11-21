@@ -1,10 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Star, ThumbsUp, User, ChevronDown, Check, Pencil, Trash2 } from "lucide-react"
+import { Star, ThumbsUp, User, Check, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUserAuth } from "@/components/user-auth-provider"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Field, Input, Select, Textarea } from "@/components/ui/field"
+import { SectionHeading } from "@/components/ui/section-heading"
 import {
   deleteMyReview,
   getReviewsForProduct,
@@ -13,36 +16,40 @@ import {
   type ReviewRow,
 } from "@/lib/supabase/reviews"
 
-function StarRating({
-  rating,
-  interactive,
-  onChange,
-  size = "default",
-}: {
-  rating: number
-  interactive?: boolean
-  onChange?: (r: number) => void
-  size?: "default" | "sm" | "lg"
-}) {
-  const [hovered, setHovered] = useState(0)
-  const display = interactive ? (hovered || rating) : rating
-  const cls = size === "sm" ? "size-3.5" : size === "lg" ? "size-6" : "size-4"
-
+function Stars({ rating, size = "size-4" }: { rating: number; size?: string }) {
   return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
+    <span className="flex items-center gap-0.5" aria-hidden>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Star key={i} className={cn(size, rating >= i - 0.25 ? "fill-navy text-navy" : "fill-transparent text-navy/30")} />
+      ))}
+    </span>
+  )
+}
+
+/** Keyboard-operable rating input: a radio group of five star buttons. */
+function StarInput({ value, onChange }: { value: number; onChange: (r: number) => void }) {
+  const [hovered, setHovered] = useState(0)
+  const display = hovered || value
+  return (
+    <div role="radiogroup" aria-label="Your rating" className="flex items-center gap-1" onMouseLeave={() => setHovered(0)}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <button
           key={i}
-          className={cn(
-            cls,
-            "transition-colors",
-            display >= i ? "fill-gold text-gold" : "fill-muted text-border",
-            interactive && "cursor-pointer hover:scale-110 transition-transform",
-          )}
-          onMouseEnter={() => interactive && setHovered(i)}
-          onMouseLeave={() => interactive && setHovered(0)}
-          onClick={() => interactive && onChange?.(i)}
-        />
+          type="button"
+          role="radio"
+          aria-checked={value === i}
+          aria-label={`${i} star${i > 1 ? "s" : ""}`}
+          tabIndex={value === i || (value === 0 && i === 1) ? 0 : -1}
+          onMouseEnter={() => setHovered(i)}
+          onClick={() => onChange(i)}
+          onKeyDown={e => {
+            if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); onChange(Math.min(5, (value || 0) + 1)) }
+            if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); onChange(Math.max(1, (value || 2) - 1)) }
+          }}
+          className="flex size-11 items-center justify-center"
+        >
+          <Star className={cn("size-6 transition-colors", display >= i ? "fill-navy text-navy" : "fill-transparent text-navy/30")} aria-hidden />
+        </button>
       ))}
     </div>
   )
@@ -50,8 +57,7 @@ function StarRating({
 
 export function ProductReviews({ productId }: { productId: string }) {
   const { session } = useUserAuth()
-  const [reviews, setReviews] = useState<ReviewRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState<{ productId: string; reviews: ReviewRow[] } | null>(null)
   const [helpfulClicked, setHelpfulClicked] = useState<Set<string>>(new Set())
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -63,49 +69,45 @@ export function ProductReviews({ productId }: { productId: string }) {
   const [deleting, setDeleting] = useState(false)
   const [formError, setFormError] = useState("")
   const [formMsg, setFormMsg] = useState("")
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
 
-  async function load() {
-    setLoading(true)
+  const loading = loaded?.productId !== productId
+  const reviews = useMemo(() => (loaded?.productId === productId ? loaded.reviews : []), [loaded, productId])
+
+  const reload = useCallback(async () => {
     const data = await getReviewsForProduct(productId)
-    setReviews(data)
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLoaded({ productId, reviews: data })
   }, [productId])
 
-  const [myUserId, setMyUserId] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
+    getReviewsForProduct(productId).then(data => {
+      if (!cancelled) setLoaded({ productId, reviews: data })
+    })
+    return () => { cancelled = true }
+  }, [productId])
+
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
     ;(async () => {
-      if (!session) {
-        setMyUserId(null)
-        return
-      }
       const { createClient } = await import("@/lib/supabase/client")
       const supabase = createClient()
       if (!supabase) return
       const { data: { user } } = await supabase.auth.getUser()
-      if (!cancelled) setMyUserId(user?.id ?? null)
+      if (!cancelled) setSessionUserId(user?.id ?? null)
     })()
     return () => { cancelled = true }
   }, [session])
+  const myUserId = session ? sessionUserId : null
 
   const ownReview = useMemo(
     () => (myUserId ? reviews.find(r => r.userId === myUserId) ?? null : null),
     [reviews, myUserId],
   )
 
-  const avgRating = reviews.length
-    ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
-    : 0
-
-  const ratingCounts = [5, 4, 3, 2, 1].map((r) => ({
-    star: r,
-    count: reviews.filter((rv) => rv.rating === r).length,
-  }))
+  const avgRating = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0
+  const ratingCounts = [5, 4, 3, 2, 1].map(r => ({ star: r, count: reviews.filter(rv => rv.rating === r).length }))
 
   const sorted = useMemo(() => {
     return [...reviews].sort((a, b) => {
@@ -144,14 +146,15 @@ export function ProductReviews({ productId }: { productId: string }) {
   }
 
   async function markHelpful(id: string) {
-    if (helpfulClicked.has(id)) return
-    if (!session) return
+    if (helpfulClicked.has(id) || !session) return
     const res = await markReviewHelpful(id)
     if (res.ok) {
-      setReviews((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, helpful: res.helpful ?? r.helpful + 1 } : r)),
+      setLoaded(prev =>
+        prev
+          ? { ...prev, reviews: prev.reviews.map(r => (r.id === id ? { ...r, helpful: res.helpful ?? r.helpful + 1 } : r)) }
+          : prev,
       )
-      setHelpfulClicked((prev) => new Set([...prev, id]))
+      setHelpfulClicked(prev => new Set([...prev, id]))
     }
   }
 
@@ -162,12 +165,7 @@ export function ProductReviews({ productId }: { productId: string }) {
     setFormError("")
     setFormMsg("")
     // submit_review upserts when a review already exists for this user+product
-    const res = await submitReview({
-      productId,
-      rating: formRating,
-      title: formTitle,
-      body: formBody,
-    })
+    const res = await submitReview({ productId, rating: formRating, title: formTitle, body: formBody })
     setSubmitting(false)
     if (!res.ok) {
       setFormError(res.message ?? "Could not save review.")
@@ -176,7 +174,7 @@ export function ProductReviews({ productId }: { productId: string }) {
     setFormMsg(editing ? "Your review has been updated." : "Your review has been submitted.")
     setShowForm(false)
     setEditing(false)
-    await load()
+    await reload()
   }
 
   async function handleDelete() {
@@ -192,167 +190,110 @@ export function ProductReviews({ productId }: { productId: string }) {
     setFormMsg("Your review was deleted.")
     setShowForm(false)
     setEditing(false)
-    await load()
+    await reload()
   }
 
   return (
-    <section className="border-t border-border mt-16 pt-12 mx-auto max-w-7xl px-5 lg:px-8">
-      <div className="mb-10 flex flex-col gap-8 md:flex-row md:items-start md:gap-12">
-        <div className="shrink-0 text-center md:text-left">
-          <p className="font-serif text-6xl font-medium leading-none">
-            {loading ? "—" : avgRating.toFixed(1)}
-          </p>
-          <StarRating rating={Math.round(avgRating)} size="lg" />
-          <p className="mt-2 text-sm font-light text-muted-foreground">
-            {reviews.length} review{reviews.length !== 1 ? "s" : ""}
+    <section id="reviews" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-[clamp(3rem,2rem+4vw,6rem)] lg:px-8" aria-labelledby="reviews-title">
+      <SectionHeading eyebrow="What customers say" title={<span id="reviews-title">Reviews</span>} className="mb-8" />
+      <div className="mb-10 grid gap-8 md:grid-cols-[auto_1fr_auto] md:items-start md:gap-12">
+        <div>
+          <p className="font-serif text-6xl leading-none text-navy-deep tabular-nums">{loading ? "—" : avgRating.toFixed(1)}</p>
+          <span className="mt-2 block"><Stars rating={avgRating} size="size-5" /></span>
+          <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">
+            {loading ? "Loading reviews…" : `${reviews.length} review${reviews.length !== 1 ? "s" : ""}`}
           </p>
         </div>
 
-        <div className="flex-1 space-y-2">
+        <ul className="space-y-2" aria-label="Rating breakdown">
           {ratingCounts.map(({ star, count }) => (
-            <div key={star} className="flex items-center gap-3">
-              <span className="w-3 text-[11px] font-light text-muted-foreground">{star}</span>
-              <Star className="size-3 fill-gold text-gold shrink-0" />
-              <div className="flex-1 h-1.5 bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-gold transition-all duration-500"
+            <li key={star} className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span className="w-12 shrink-0">{star} star</span>
+              <span className="h-1.5 flex-1 overflow-hidden bg-secondary" aria-hidden>
+                <span
+                  className="block h-full bg-navy transition-[width] duration-500 ease-atelier"
                   style={{ width: reviews.length ? `${(count / reviews.length) * 100}%` : "0%" }}
                 />
-              </div>
-              <span className="w-4 text-[11px] font-light text-muted-foreground text-right">{count}</span>
-            </div>
+              </span>
+              <span className="w-6 text-right tabular-nums">{count}</span>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className="shrink-0 space-y-2">
+        <div className="flex flex-col gap-2">
           {formMsg && (
-            <div className="mb-1 flex items-center gap-2 text-sm font-light text-green-700">
-              <Check className="size-4" /> {formMsg}
-            </div>
+            <p role="status" className="flex items-center gap-2 text-sm text-success">
+              <Check aria-hidden className="size-4" /> {formMsg}
+            </p>
           )}
           {ownReview ? (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => (showForm && editing ? closeForm() : openEditForm())}
-                className="flex items-center justify-center gap-2 border border-foreground px-6 py-3 text-xs font-medium uppercase tracking-[0.18em] transition-colors hover:bg-foreground hover:text-background"
-              >
-                <Pencil className="size-3.5" />
-                {showForm && editing ? "Cancel" : "Edit Your Review"}
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex items-center justify-center gap-2 border border-border px-6 py-2.5 text-xs font-light uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:border-destructive hover:text-destructive disabled:opacity-50"
-              >
-                <Trash2 className="size-3.5" />
-                {deleting ? "Deleting…" : "Delete Review"}
-              </button>
-            </div>
+            <>
+              <Button variant="outline" onClick={() => (showForm && editing ? closeForm() : openEditForm())} aria-expanded={showForm}>
+                <Pencil aria-hidden /> {showForm && editing ? "Cancel" : "Edit your review"}
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>
+                <Trash2 aria-hidden /> {deleting ? "Deleting…" : "Delete review"}
+              </Button>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => (showForm ? closeForm() : openCreateForm())}
-              className="border border-foreground px-6 py-3 text-xs font-medium uppercase tracking-[0.18em] transition-colors hover:bg-foreground hover:text-background"
-            >
-              {showForm ? "Cancel" : "Write a Review"}
-            </button>
+            <Button variant="outline" onClick={() => (showForm ? closeForm() : openCreateForm())} aria-expanded={showForm}>
+              {showForm ? "Cancel" : "Write a review"}
+            </Button>
           )}
         </div>
       </div>
 
       {showForm && (
-        <div className="mb-10 border border-border p-6 animate-fade-up">
-          <h3 className="font-serif text-xl font-medium mb-5">
-            {editing ? "Update your review" : "Share your experience"}
-          </h3>
+        <div className="mb-10 border border-border p-5 md:p-8">
+          <h3 className="mb-5 font-serif text-2xl text-navy-deep">{editing ? "Update your review" : "Share your experience"}</h3>
 
           {!session ? (
-            <div className="flex flex-col items-start gap-4 rounded-sm border border-border/60 bg-secondary p-5">
+            <div className="flex flex-col items-start gap-4 bg-secondary p-5">
               <div>
-                <p className="text-sm font-medium mb-1">Sign in to leave a review</p>
-                <p className="text-xs font-light text-muted-foreground leading-relaxed">
-                  You can write one review per product. Signed-in reviews can earn rewards points and may be marked as{" "}
-                  <span className="font-medium text-foreground">Verified Purchase</span> if you bought this product.
+                <p className="mb-1 font-medium">Sign in to leave a review</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  You can write one review per product. Signed-in reviews can earn rewards points and are marked
+                  <span className="font-medium text-foreground"> Verified Purchase</span> if you bought this product.
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Link
-                  href="/login"
-                  className="bg-foreground px-5 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-background hover:bg-gold hover:text-gold-foreground transition-colors"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/register"
-                  className="border border-border px-5 py-2.5 text-xs font-light uppercase tracking-[0.15em] hover:border-foreground transition-colors"
-                >
-                  Create Account
-                </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/login" className={buttonVariants()}>Sign in</Link>
+                <Link href="/register" className={buttonVariants({ variant: "outline" })}>Create account</Link>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="flex items-center gap-2 text-xs font-light text-muted-foreground">
-                <User className="size-3.5" />
+            <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User aria-hidden className="size-4" />
                 Reviewing as {session.email}
-                {editing && <span className="text-gold">· Editing your existing review</span>}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-                  Your Rating <span className="text-gold">*</span>
-                </label>
-                <StarRating rating={formRating} interactive onChange={setFormRating} size="lg" />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-                  Review Title
-                </label>
-                <input
+                {editing && <span className="text-navy">· editing your existing review</span>}
+              </p>
+              <fieldset>
+                <legend className="mb-1 text-xs font-medium uppercase tracking-[0.14em]">
+                  Your rating <span aria-hidden className="text-rose">*</span>
+                </legend>
+                <StarInput value={formRating} onChange={setFormRating} />
+              </fieldset>
+              <Field label="Review title" required>
+                <Input
                   type="text"
                   value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
+                  onChange={e => setFormTitle(e.target.value)}
                   placeholder="Sum up your experience in a few words"
-                  required
-                  className="border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
                 />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-                  Your Review <span className="text-gold">*</span>
-                </label>
-                <textarea
+              </Field>
+              <Field label="Your review" required error={formError || undefined}>
+                <Textarea
                   value={formBody}
-                  onChange={(e) => setFormBody(e.target.value)}
+                  onChange={e => setFormBody(e.target.value)}
                   placeholder="Tell others about your experience with this product…"
                   rows={4}
-                  required
-                  className="resize-none border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="resize-none"
                 />
-              </div>
-
-              {formError && (
-                <p className="text-xs font-light text-destructive">{formError}</p>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={!formRating || !formBody || submitting}
-                  className={cn(
-                    "px-6 py-3 text-xs font-medium uppercase tracking-[0.18em] transition-all",
-                    !formRating || !formBody || submitting
-                      ? "bg-muted text-muted-foreground cursor-not-allowed"
-                      : "bg-foreground text-background hover:bg-gold hover:text-gold-foreground",
-                  )}
-                >
-                  {submitting ? "Saving…" : editing ? "Update Review" : "Submit Review"}
-                </button>
-              </div>
+              </Field>
+              <Button type="submit" disabled={!formRating || !formBody || submitting}>
+                {submitting ? "Saving…" : editing ? "Update review" : "Submit review"}
+              </Button>
             </form>
           )}
         </div>
@@ -360,106 +301,86 @@ export function ProductReviews({ productId }: { productId: string }) {
 
       {reviews.length > 0 && (
         <>
-          <div className="mb-6 flex items-center justify-between">
-            <p className="text-xs font-light uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <p className="text-sm text-muted-foreground">
               {reviews.length} review{reviews.length !== 1 ? "s" : ""}
             </p>
-            <div className="relative">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="appearance-none border border-border bg-background py-2 pl-3 pr-8 text-xs font-light outline-none focus:border-foreground transition-colors cursor-pointer"
-              >
-                <option value="recent">Most Recent</option>
-                <option value="helpful">Most Helpful</option>
-                <option value="rating_high">Highest Rated</option>
-                <option value="rating_low">Lowest Rated</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <label htmlFor="review-sort" className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Sort</label>
+              <div className="w-44">
+                <Select id="review-sort" value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="h-10 text-sm">
+                  <option value="recent">Most recent</option>
+                  <option value="helpful">Most helpful</option>
+                  <option value="rating_high">Highest rated</option>
+                  <option value="rating_low">Lowest rated</option>
+                </Select>
+              </div>
             </div>
           </div>
 
-          <div className="divide-y divide-border">
-            {sorted.map((review) => {
+          <ul className="divide-y divide-border">
+            {sorted.map(review => {
               const isMine = Boolean(myUserId && review.userId === myUserId)
               return (
-              <div key={review.id} className="py-7">
-                <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                <li key={review.id} className="flex items-start gap-4 py-7">
+                  <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-medium text-navy">
                     {review.authorInitial}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium">{review.author}</p>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <p className="font-medium">{review.author}</p>
                       {isMine && (
-                        <span className="border border-gold/40 bg-lavender px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-widest text-gold">
-                          Your review
-                        </span>
+                        <span className="bg-secondary px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-navy">Your review</span>
                       )}
                       {review.verified && (
-                        <span className="flex items-center gap-1 text-[10px] font-light text-green-700">
-                          <Check className="size-2.5" /> Verified Purchase
+                        <span className="flex items-center gap-1 text-xs font-medium text-success">
+                          <Check aria-hidden className="size-3.5" /> Verified purchase
                         </span>
                       )}
-                      <span className="text-[10px] font-light text-muted-foreground">
-                        {new Date(review.date).toLocaleDateString("en-US", {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(review.date).toLocaleDateString("en-GB", { month: "long", day: "numeric", year: "numeric" })}
                       </span>
                     </div>
-                    <StarRating rating={review.rating} size="sm" />
-                    <p className="text-sm font-medium mt-3 mb-1.5">{review.title}</p>
-                    <p className="text-sm font-light text-muted-foreground leading-relaxed">{review.body}</p>
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span className="mt-1 block">
+                      <Stars rating={review.rating} size="size-3.5" />
+                      <span className="sr-only">Rated {review.rating} out of 5</span>
+                    </span>
+                    {review.title && <p className="mt-3 font-medium">{review.title}</p>}
+                    <p className="mt-1 leading-relaxed text-muted-foreground">{review.body}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-1">
                       <button
                         type="button"
                         onClick={() => markHelpful(review.id)}
-                        className={cn(
-                          "flex items-center gap-1.5 text-[11px] font-light transition-colors",
-                          helpfulClicked.has(review.id)
-                            ? "text-gold cursor-default"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
                         disabled={helpfulClicked.has(review.id) || !session || isMine}
-                        title={!session ? "Sign in to mark helpful" : isMine ? "You can’t mark your own review" : undefined}
+                        title={!session ? "Sign in to mark helpful" : isMine ? "You can't mark your own review" : undefined}
+                        className={cn(
+                          "inline-flex min-h-11 items-center gap-1.5 pr-3 text-sm transition-colors",
+                          helpfulClicked.has(review.id) ? "text-navy" : "text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground",
+                        )}
                       >
-                        <ThumbsUp className="size-3.5" />
-                        Helpful ({review.helpful})
+                        <ThumbsUp aria-hidden className="size-4" /> Helpful ({review.helpful})
                       </button>
                       {isMine && (
                         <>
-                          <button
-                            type="button"
-                            onClick={openEditForm}
-                            className="flex items-center gap-1 text-[11px] font-light text-muted-foreground hover:text-foreground"
-                          >
-                            <Pencil className="size-3" /> Edit
+                          <button type="button" onClick={openEditForm} className="inline-flex min-h-11 items-center gap-1 px-2 text-sm text-muted-foreground hover:text-foreground">
+                            <Pencil aria-hidden className="size-3.5" /> Edit
                           </button>
-                          <button
-                            type="button"
-                            onClick={handleDelete}
-                            className="flex items-center gap-1 text-[11px] font-light text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="size-3" /> Delete
+                          <button type="button" onClick={handleDelete} className="inline-flex min-h-11 items-center gap-1 px-2 text-sm text-muted-foreground hover:text-destructive">
+                            <Trash2 aria-hidden className="size-3.5" /> Delete
                           </button>
                         </>
                       )}
                     </div>
                   </div>
-                </div>
-              </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         </>
       )}
 
       {!loading && reviews.length === 0 && !showForm && (
-        <p className="text-center text-sm font-light text-muted-foreground py-8">
-          No reviews yet. Be the first to share your experience.
-        </p>
+        <p className="border-t border-border py-8 text-muted-foreground">No reviews yet. Be the first to share your experience.</p>
       )}
     </section>
   )

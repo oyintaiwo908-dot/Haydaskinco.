@@ -1,19 +1,25 @@
 "use client"
 
-import { useState } from "react"
-import Image from "next/image"
+import { useRef, useState } from "react"
 import Link from "next/link"
 import {
-  Check, Minus, Plus, ChevronRight, Heart, Star,
-  Truck, ShieldCheck, RotateCcw,
+  Check, Minus, Plus, ChevronLeft, ChevronRight, Heart, Star,
+  Truck, ShieldCheck, RotateCcw, CircleCheck, CircleAlert, CircleX,
 } from "lucide-react"
 import { useCart } from "@/components/cart-provider"
 import { useFavorites } from "@/components/favorites-provider"
+import { PdpGallery } from "@/components/pdp-gallery"
+import { productMorphName } from "@/components/motion/morph-name"
+import { StickyBuyBar } from "@/components/sticky-buy-bar"
+import { Money, Price } from "@/components/ui/price"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
+import { Disclosure } from "@/components/ui/disclosure"
+import { announce, flyToBag } from "@/components/motion/fly-to-bag"
 import {
   buildPriceBands,
   calculateTotalPrice,
   calculateUnitPrice,
-  formatPrice,
   getEffectivePrice,
   getProductMoq,
   getTierDiscount,
@@ -23,41 +29,44 @@ import {
 } from "@/lib/products"
 import { isDealCartId } from "@/lib/deals"
 import { slugifyCategory } from "@/lib/supabase/categories"
-import { slugifyCatalogLabel } from "@/lib/catalog"
+import { ALL_CONCERNS, ALL_INGREDIENTS, slugifyCatalogLabel } from "@/lib/catalog"
+import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
 import { cn } from "@/lib/utils"
 
-type Tab = "description" | "how-to-use" | "ingredients" | "reviews"
+const PINNED_CONCERNS = new Set<string>(ALL_CONCERNS)
+const PDP_SUMMARY = "min-h-16 font-serif text-2xl font-normal normal-case tracking-normal text-navy-deep"
+const PINNED_INGREDIENTS = new Set<string>(ALL_INGREDIENTS)
 
-/* ─── Star row helper ─────────────────────────────────────────── */
-function StarRow({ rating, size = "sm" }: { rating: number; size?: "sm" | "md" }) {
-  const cls = size === "md" ? "size-4" : "size-3.5"
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map(i => (
-        <Star
-          key={i}
-          className={cn(cls, "transition-colors", rating >= i ? "fill-gold text-gold" : "fill-muted text-border")}
-        />
-      ))}
-    </div>
+/** Concern/ingredient pages are prebuilt for the pinned catalogue only; custom values are shown as text. */
+function CatalogChip({ label, href, linked }: { label: string; href: string; linked: boolean }) {
+  const cls = "inline-flex min-h-9 items-center rounded-control border px-3 text-sm"
+  return linked ? (
+    <Link href={href} prefetch={false} className={cn(cls, "border-navy/20 text-navy-deep transition-colors hover:border-navy hover:bg-porcelain")}>
+      {label}
+    </Link>
+  ) : (
+    <span className={cn(cls, "border-border text-foreground")}>{label}</span>
   )
 }
 
 export function ProductDetail({ product, hideBenefits = false }: { product: Product, hideBenefits?: boolean }) {
   const { addItem } = useCart()
   const { isFavorited, toggleFavorite } = useFavorites()
+  const ctaRef = useRef<HTMLDivElement>(null)
+  const galleryRef = useRef<HTMLDivElement>(null)
 
   const gallery = product.images && product.images.length > 0 ? product.images : [product.image]
+  const isDeal = isDealCartId(product.id) || product.category === "bundle"
   const moq = isDealCartId(product.id) ? 1 : getProductMoq(product)
   const basePrice = product.price
-  const [activeImg, setActiveImg] = useState(0)
   const [qty, setQty] = useState(moq)
   const [added, setAdded] = useState(false)
-  const [tab, setTab] = useState<Tab>("description")
   const [selectedVariant, setSelectedVariant] = useState(
     product.variants && product.variants.length > 0 ? 0 : null
   )
   const favorited = isFavorited(product.id)
+  /** Present on records that have it (products.how_to_use); not part of the shared type yet. */
+  const howToUse = (product as Product & { howToUse?: string }).howToUse?.trim()
 
   // Absolute SKU price; delta vs base is applied inside calculateUnitPrice
   const skuPrice =
@@ -102,6 +111,8 @@ export function ProductDetail({ product, hideBenefits = false }: { product: Prod
       name: variant ? `${product.name} — ${variant.label}` : product.name,
     }
     addItem(item, qty)
+    flyToBag(galleryRef.current)
+    announce(`Added ${qty} × ${item.name} to cart`)
     setAdded(true)
     window.setTimeout(() => setAdded(false), 1800)
   }
@@ -113,472 +124,328 @@ export function ProductDetail({ product, hideBenefits = false }: { product: Prod
     selectedVariant !== null && product.variants
       ? product.variants[selectedVariant].label
       : product.size
+  const showBands = priceBands.length > 0 && (Boolean(product.priceTiers?.length) || moq > 1)
+  const categoryHref = `/shop?category=${encodeURIComponent(slugifyCategory(product.category))}`
 
   return (
-    <section className="mx-auto max-w-7xl px-5 py-8 md:py-16 lg:px-8">
-      {/* Breadcrumb */}
-      <nav className="mb-8 flex items-center gap-2 text-[8px] md:text-[11px] font-light uppercase tracking-[0.18em] text-muted-foreground">
-        <Link href="/" className="transition-colors hover:text-gold">Home</Link>
-        <ChevronRight className="size-2.5 md:size-3" />
-        {isDealCartId(product.id) || product.category === "bundle" ? (
-          <>
-            <Link href="/deals" className="transition-colors hover:text-gold">Combo Deals</Link>
-            <ChevronRight className="size-2.5 md:size-3" />
-            <span className="text-foreground">{product.name}</span>
-          </>
-        ) : (
-          <>
-            <Link href="/shop" className="transition-colors hover:text-gold">Shop</Link>
-            <ChevronRight className="size-2.5 md:size-3" />
-            <Link
-              href={`/shop?category=${encodeURIComponent(slugifyCategory(product.category))}`}
-              className="transition-colors hover:text-gold"
-            >
-              {product.category}
-            </Link>
-            <ChevronRight className="size-2.5 md:size-3" />
-            <span className="text-foreground">{product.name}</span>
-          </>
-        )}
+    <section className="mx-auto max-w-7xl px-5 pb-12 pt-6 md:pb-20 md:pt-10 lg:px-8">
+      {/* Breadcrumb: full trail on desktop, one back link on phones */}
+      <nav aria-label="Breadcrumb" className="mb-6 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <Link
+          href={isDeal ? "/deals" : categoryHref}
+          className="inline-flex min-h-11 items-center gap-1 text-navy sm:hidden"
+        >
+          <ChevronLeft aria-hidden className="size-4" /> {isDeal ? "Combo deals" : product.category}
+        </Link>
+        <ol className="hidden flex-wrap items-center gap-2 sm:flex">
+          {(isDeal
+            ? [{ label: "Home", href: "/" }, { label: "Combo deals", href: "/deals" }]
+            : [{ label: "Home", href: "/" }, { label: "Shop", href: "/shop" }, { label: product.category, href: categoryHref }]
+          ).map(crumb => (
+            <li key={crumb.href} className="flex items-center gap-2">
+              <Link href={crumb.href} className="hover:text-navy">{crumb.label}</Link>
+              <ChevronRight aria-hidden className="size-3" />
+            </li>
+          ))}
+          <li aria-current="page" className="text-foreground">{product.name}</li>
+        </ol>
       </nav>
 
-      {/* Main grid */}
-      <div className="grid items-start gap-8 md:gap-10 lg:grid-cols-2 lg:gap-16">
-
-        {/* ── Left: Image gallery ── */}
-        <div className="flex min-w-0 gap-4 self-start">
-          {/* Thumbnails — vertical strip on desktop, hidden on mobile */}
-          {gallery.length > 1 && (
-            <div className="hidden sm:flex flex-col gap-2.5 shrink-0">
-              {gallery.map((src, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setActiveImg(i)}
-                  className={cn(
-                    "relative size-[72px] overflow-hidden border transition-colors duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
-                    i === activeImg ? "border-gold" : "border-border hover:border-gold/60",
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-14">
+        {/* Gallery */}
+        <div ref={galleryRef} className="lg:sticky lg:top-24">
+          <PdpGallery
+            images={gallery}
+            productName={product.name}
+            morphName={isDeal ? undefined : productMorphName(product.id)}
+            overlay={
+              tags.length > 0 || hasDiscount(product) ? (
+                <ul className="pointer-events-none absolute left-3 top-3 flex flex-col items-start gap-1" aria-label="Product labels">
+                  {tags.map(t => (
+                    <li
+                      key={t}
+                      className={cn(
+                        "px-2 py-1 text-[11px] font-medium uppercase tracking-[0.12em]",
+                        t === "Bestseller" || t === "Low Stock" ? "bg-navy text-primary-foreground" : "bg-blush text-navy-deep",
+                      )}
+                    >
+                      {t}
+                    </li>
+                  ))}
+                  {hasDiscount(product) && (
+                    <li className="bg-rose px-2 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white">
+                      −{product.discountPct}%
+                    </li>
                   )}
-                  aria-label={`View image ${i + 1}`}
-                >
-                  <Image
-                    src={src}
-                    alt={`${product.name} view ${i + 1}`}
-                    fill
-                    sizes="72px"
-                    className="object-contain mix-blend-multiply"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Main image */}
-          <div className="relative flex-1 overflow-hidden border border-border">
-            {tags.length > 0 && (
-              <div className="absolute left-4 top-4 z-10 flex flex-col gap-1.5 items-start">
-                {tags.map(t => (
-                  <span
-                    key={t}
-                    className={cn(
-                      "px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em]",
-                      t === "Bestseller" || t === "Low Stock"
-                        ? "bg-gold text-gold-foreground"
-                        : "bg-accent text-accent-foreground",
-                    )}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="relative aspect-4/5 bg-secondary">
-              {gallery.map((src, i) => (
-                <div
-                  key={`${src}-${i}`}
-                  className={cn(
-                    "absolute inset-0 bg-secondary atelier-crossfade",
-                    i === activeImg ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0",
-                  )}
-                >
-                  <Image
-                    src={src}
-                    alt={i === activeImg ? product.name : ""}
-                    fill
-                    priority={i === 0}
-                    sizes="(max-width: 1024px) 100vw, 50vw"
-                    className="object-contain mix-blend-multiply"
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Mobile thumbnail dots */}
-            {gallery.length > 1 && (
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 sm:hidden">
-                {gallery.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setActiveImg(i)}
-                    className={cn(
-                      "size-1.5 rounded-full transition-[width,background-color] duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
-                      i === activeImg ? "bg-foreground w-4" : "bg-foreground/30",
-                    )}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+                </ul>
+              ) : null
+            }
+          />
         </div>
 
-        {/* ── Right: Product info ── */}
-        <div className="flex min-w-0 flex-col self-start">
-          <p className="text-[8px] md:text-[11px] font-light uppercase tracking-[0.24em] text-gold">{product.brand}</p>
-          <h1 className="mt-2 text-balance font-serif text-2xl md:text-4xl font-medium leading-tight text-foreground lg:text-5xl">
+        {/* Info */}
+        <div className="flex min-w-0 flex-col">
+          <p className="flex items-center gap-3 text-xs font-medium uppercase tracking-[0.22em] text-rose">
+            <span aria-hidden className="h-px w-8 bg-rose" />
+            {product.brand}
+          </p>
+          <h1 className="mt-3 text-balance font-serif text-[clamp(2rem,1.6rem+1.5vw,3rem)] font-normal leading-[1.06] tracking-[-0.01em] text-navy-deep">
             {product.name}
-            {displaySize ? ` — ${displaySize}` : ""}
+            {displaySize ? <span className="text-muted-foreground"> — {displaySize}</span> : null}
           </h1>
 
-          {/* Stars + review count */}
-          <div className="mt-3 flex items-center gap-2">
-            <StarRow rating={Math.round(product.rating)} size="md" />
-            <span className="text-[10px] md:text-sm font-light text-muted-foreground">
-              {product.rating.toFixed(1)} · {product.reviewCount} reviews
-            </span>
-          </div>
-
-          {/* Price — discounted SKU − volume tier ₦ (general % + tier stack) */}
-          <div className="mt-5 flex flex-wrap items-baseline gap-3">
-            {unitPrice < skuPrice && (
-              <p className="font-serif text-lg md:text-xl font-light text-muted-foreground line-through">
-                {formatPrice(skuPrice)}
-              </p>
-            )}
-            <p className="font-serif text-2xl md:text-3xl font-medium text-foreground">
-              {formatPrice(unitPrice)}
-            </p>
-            <span className="text-[10px] md:text-sm font-light text-muted-foreground">/ unit</span>
-            {hasDiscount(product) && (
-              <span className="border border-gold/40 bg-gold/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-gold">
-                −{product.discountPct}%
+          {product.reviewCount > 0 && (
+            <a href="#reviews" className="mt-3 inline-flex min-h-9 w-fit items-center gap-2 text-sm text-muted-foreground hover:text-navy">
+              <span className="flex items-center gap-0.5" aria-hidden>
+                {[1, 2, 3, 4, 5].map(i => (
+                  <Star key={i} className={cn("size-4", product.rating >= i - 0.25 ? "fill-navy text-navy" : "fill-transparent text-navy/60")} />
+                ))}
               </span>
-            )}
+              <span>
+                <span className="sr-only">Rated </span>
+                {product.rating.toFixed(1)}
+                <span className="sr-only"> out of 5</span> · {product.reviewCount} reviews
+              </span>
+            </a>
+          )}
+
+          {/* Price: discounted SKU − volume tier ₦ (general % + tier stack) */}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Price
+              ticker
+              amount={unitPrice}
+              compareAt={unitPrice < skuPrice ? skuPrice : null}
+              size="lg"
+              suffix={moq > 1 || product.priceTiers?.length ? "/ unit" : undefined}
+            />
             {tierDiscount > 0 && (
-              <span className="border border-border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                −{formatPrice(tierDiscount)} vol.
+              <span className="rounded-control border border-border px-2 py-1 text-xs font-medium text-muted-foreground">
+                −<Money amount={tierDiscount} /> volume
               </span>
             )}
           </div>
           {hasDiscount(product) && tierDiscount > 0 && (
-            <p className="mt-1 text-xs font-light text-muted-foreground">
-              After {product.discountPct}% → {formatPrice(discountedSku)}, then −{formatPrice(tierDiscount)} volume
+            <p className="mt-1 text-sm text-muted-foreground">
+              After {product.discountPct}% → <Money amount={discountedSku} />, then −<Money amount={tierDiscount} /> volume
             </p>
           )}
-          <p className="mt-1 text-sm font-light text-muted-foreground">
-            Line total{" "}
-            <span className="font-medium text-foreground">{formatPrice(totalPrice)}</span>
-            {" "}· qty {qty}
-          </p>
-
+          {qty > 1 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Line total <span className="font-medium text-foreground tabular-nums"><Money amount={totalPrice} /></span> for {qty}
+            </p>
+          )}
           {moq > 1 && (
-            <p className="mt-2 text-sm font-light text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               Minimum order quantity: <span className="font-medium text-foreground">{moq}</span>
             </p>
           )}
 
-          {priceBands.length > 0 && (product.priceTiers?.length || moq > 1) && (
-            <div className="mt-4 border border-border">
-              <p className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                Price range
-              </p>
-              <ul className="divide-y divide-border">
-                {priceBands.map((band) => {
-                  const active =
-                    qty >= band.minQty &&
-                    (band.maxQty == null || qty <= band.maxQty)
+          {showBands && (
+            <table className="mt-4 w-full border border-border text-sm">
+              <caption className="border-b border-border px-3 py-2 text-left text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Price by quantity
+              </caption>
+              <tbody className="divide-y divide-border">
+                {priceBands.map(band => {
+                  const active = qty >= band.minQty && (band.maxQty == null || qty <= band.maxQty)
                   return (
-                    <li
-                      key={`${band.minQty}-${band.maxQty ?? "open"}`}
-                      className={cn(
-                        "flex items-center justify-between px-3 py-2 text-xs font-light",
-                        active && "bg-lavender/60",
-                      )}
-                    >
-                      <span>
-                        {band.label}
-
-                      </span>
-                      <span className="font-medium">{formatPrice(band.unitPrice)} each</span>
-                    </li>
+                    <tr key={`${band.minQty}-${band.maxQty ?? "open"}`} className={cn(active && "bg-secondary")}>
+                      <th scope="row" className="px-3 py-2 text-left font-normal">{band.label}</th>
+                      <td className="px-3 py-2 text-right font-medium tabular-nums"><Money amount={band.unitPrice} /> each</td>
+                    </tr>
                   )
                 })}
-              </ul>
-            </div>
+              </tbody>
+            </table>
           )}
 
-          {/* Stock status */}
-          <p className={cn(
-            "mt-2 text-sm font-light",
-            inStock ? (lowStock ? "text-amber-600" : "text-emerald-700") : "text-destructive",
-          )}>
-            {inStock
-              ? (lowStock ? `● Only ${product.stock} left in stock` : "● In stock")
-              : "● Currently out of stock"}
+          <p className={cn("mt-4 flex items-center gap-2 text-sm font-medium", inStock ? (lowStock ? "text-warning" : "text-success") : "text-destructive")}>
+            {inStock ? (lowStock ? <CircleAlert aria-hidden className="size-4" /> : <CircleCheck aria-hidden className="size-4" />) : <CircleX aria-hidden className="size-4" />}
+            {inStock ? (lowStock ? `Only ${product.stock} left in stock` : "In stock") : "Currently out of stock"}
           </p>
 
-          <span className="my-6 h-px w-full bg-border" />
-
-          <p className="text-pretty text-sm font-light leading-relaxed text-muted-foreground md:text-[15px]">
-            {product.description}
-          </p>
-
-          {/* Key ingredients chips */}
-          {product.ingredients.length > 0 && (
-            <div className="mt-5">
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Key Ingredients</p>
-              <div className="flex flex-wrap gap-1.5">
-                {product.ingredients.map(i => (
-                  <span key={i} className="border border-border px-3 py-1 text-xs font-light text-foreground/80">
-                    {i}
-                  </span>
-                ))}
-              </div>
-            </div>
+          {product.description && (
+            <p className="mt-6 border-t border-border pt-6 text-pretty leading-relaxed text-muted-foreground">
+              {product.description}
+            </p>
           )}
 
           {/* Variant / size selector */}
           {product.variants && product.variants.length > 0 ? (
-            <div className="mt-5">
-              <div className="mb-2 flex items-baseline gap-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Size / Variant</p>
+            <fieldset className="mt-6">
+              <legend className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-foreground">
+                Size
                 {selectedVariant !== null && (
-                  <span className="text-xs font-light text-muted-foreground">
-                    — {product.variants[selectedVariant].label}
+                  <span className="ml-2 font-normal normal-case tracking-normal text-muted-foreground">
+                    {product.variants[selectedVariant].label}
                   </span>
                 )}
-              </div>
+              </legend>
               <div className="flex flex-wrap gap-2">
                 {product.variants.map((v, idx) => (
-                  <button
+                  // Native radio: one-of-many semantics and arrow-key behaviour for free.
+                  <label
                     key={v.label}
-                    type="button"
-                    onClick={() => setSelectedVariant(idx)}
                     className={cn(
-                      "flex flex-col items-center border px-4 py-2 text-xs transition-colors duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
+                      "flex min-h-12 cursor-pointer flex-col items-start justify-center rounded-control border px-4 py-2 text-sm transition-colors duration-200",
+                      "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
                       selectedVariant === idx
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-foreground hover:border-foreground",
+                        ? "border-navy bg-navy text-primary-foreground"
+                        : "border-input text-foreground hover:border-navy",
                     )}
                   >
+                    <input
+                      type="radio"
+                      name={`variant-${product.id}`}
+                      value={v.label}
+                      checked={selectedVariant === idx}
+                      onChange={() => setSelectedVariant(idx)}
+                      className="sr-only"
+                      data-focus="custom"
+                    />
                     <span className="font-medium">{v.label}</span>
-                    <span className={cn("text-[11px] mt-0.5", selectedVariant === idx ? "text-background/70" : "text-muted-foreground")}>
-                      {formatPrice(
-                        calculateUnitPrice({
+                    <span className={cn("text-xs tabular-nums", selectedVariant === idx ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                      <Money
+                        amount={calculateUnitPrice({
                           basePrice,
                           skuPrice: v.price,
                           quantity: qty,
                           priceTiers: product.priceTiers,
                           discountPct: product.discountPct,
-                        }),
-                      )}
+                        })}
+                      />
                     </span>
-                  </button>
+                  </label>
                 ))}
               </div>
-            </div>
+            </fieldset>
           ) : product.size ? (
-            <div className="mt-5">
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Size</p>
-              <span className="inline-flex border border-foreground px-4 py-2 text-sm font-light">
-                {product.size}
-              </span>
-            </div>
+            <p className="mt-6 text-sm">
+              <span className="mr-2 text-xs font-medium uppercase tracking-[0.14em]">Size</span>
+              <span className="text-muted-foreground">{product.size}</span>
+            </p>
           ) : null}
 
-          {/* Qty + Add to cart + Wishlist */}
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-stretch">
-            {/* Wishlist */}
-            <button
-              type="button"
-              onClick={() => toggleFavorite(product)}
-              aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-              className={cn(
-                "flex size-12 shrink-0 items-center justify-center border transition-colors duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
-                favorited
-                  ? "border-gold bg-lavender text-gold"
-                  : "border-border text-muted-foreground hover:border-gold hover:text-gold",
-              )}
-            >
-              <Heart className={cn("size-5 transition-all", favorited && "fill-gold")} />
-            </button>
-
-            {/* Qty stepper */}
-            <div className="flex items-center border border-border sm:w-32 shrink-0">
+          {/* Quantity, add to cart, favourite */}
+          <div ref={ctaRef} className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+            <div className="flex h-12 items-center rounded-control border border-input sm:w-36">
               <button
                 type="button"
                 aria-label="Decrease quantity"
                 onClick={() => setQty(q => Math.max(moq, q - 1))}
                 disabled={qty <= moq}
-                className="flex size-12 items-center justify-center text-foreground transition-colors hover:text-gold disabled:opacity-30"
+                className="flex size-12 items-center justify-center text-navy disabled:opacity-30"
               >
-                <Minus className="size-4" />
+                <Minus aria-hidden className="size-4" />
               </button>
-              <span className="flex-1 text-center text-sm font-light tabular-nums">{qty}</span>
+              <output aria-live="polite" aria-label="Quantity" className="flex-1 text-center tabular-nums">{qty}</output>
               <button
                 type="button"
                 aria-label="Increase quantity"
                 onClick={() => setQty(q => Math.min(product.stock > 0 ? product.stock : q + 1, q + 1))}
-                className="flex size-12 items-center justify-center text-foreground transition-colors hover:text-gold"
+                className="flex size-12 items-center justify-center text-navy"
               >
-                <Plus className="size-4" />
+                <Plus aria-hidden className="size-4" />
               </button>
             </div>
-
-            {/* Add to cart */}
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={!inStock}
-              className={cn(
-                "flex min-h-12 flex-1 items-center justify-center gap-2 border px-8 py-3.5 text-xs font-medium uppercase tracking-[0.18em] transition-colors duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
-                !inStock
-                  ? "cursor-not-allowed border-border bg-muted text-muted-foreground"
-                  : added
-                    ? "border-gold bg-gold text-gold-foreground"
-                    : "border-foreground bg-foreground text-background hover:border-gold hover:bg-gold hover:text-gold-foreground",
-              )}
+            <Button onClick={handleAdd} disabled={!inStock} className="btn-sheen flex-1">
+              {!inStock ? "Out of stock" : added ? <><Check aria-hidden /> Added to cart</> : "Add to cart"}
+            </Button>
+            <IconButton
+              label={`Save ${product.name} to favourites`}
+              aria-pressed={favorited}
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                toggleFavorite(product)
+                announce(favorited ? `Removed ${product.name} from favourites` : `Saved ${product.name} to favourites`)
+              }}
+              className={cn("hidden sm:inline-flex", favorited && "border-rose text-rose")}
             >
-              {added ? <><Check className="size-4" /> Added to Cart</> : "Add to Cart"}
-            </button>
+              <Heart aria-hidden className={cn("size-5", favorited && "fill-current")} strokeWidth={1.5} />
+            </IconButton>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              toggleFavorite(product)
+              announce(favorited ? `Removed ${product.name} from favourites` : `Saved ${product.name} to favourites`)
+            }}
+            aria-pressed={favorited}
+            className="mt-2 inline-flex min-h-11 w-fit items-center gap-2 text-sm text-navy sm:hidden"
+          >
+            <Heart aria-hidden className={cn("size-4", favorited && "fill-current text-rose")} strokeWidth={1.5} />
+            {favorited ? "Saved to favourites" : "Save to favourites"}
+          </button>
 
-          {/* Trust badges */}
-          <div className="mt-7 grid grid-cols-3 gap-3 border-t border-border pt-6 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Truck className="size-4 text-gold shrink-0" />
-              <span className="font-light">Nationwide delivery</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-gold shrink-0" />
-              <span className="font-light">100% authentic</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <RotateCcw className="size-4 text-gold shrink-0" />
-              <span className="font-light">Easy returns</span>
-            </div>
-          </div>
-        </div>
-      </div>
+          <ul className="mt-6 grid grid-cols-3 divide-x divide-navy/10 border-y border-navy/10 bg-porcelain text-xs text-navy-deep">
+            <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><Truck aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> Nationwide delivery</li>
+            <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><ShieldCheck aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> 100% authentic</li>
+            <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><RotateCcw aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> Easy returns</li>
+          </ul>
 
-      {/* ── Tabs: Description / How to Use / Ingredients ── */}
-      <div className="mt-8 md:mt-16">
-        <div className="flex border-b border-border gap-0">
-          {(["description", "how-to-use", "ingredients"] as Tab[]).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={cn(
-                "pb-4 pr-8 text-[10px] md:text-sm capitalize transition-colors",
-                tab === t
-                  ? "border-b-2 border-foreground text-foreground font-medium -mb-px"
-                  : "text-muted-foreground hover:text-foreground font-light",
-              )}
-            >
-              {t === "how-to-use" ? "How to Use" : t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        <div className="py-8 max-w-3xl text-[13px] md:text-[15px] text-muted-foreground leading-relaxed">
-          {tab === "description" && (
-            <>
-              <p>{product.description}</p>
-              {!hideBenefits && product.benefits.length > 0 && (
-                <>
-                  <h4 className="mt-7 mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Benefits</h4>
+          {/* Details */}
+          <div className="mt-8 border-t border-border">
+            {((!hideBenefits && product.benefits.length > 0) || product.concerns.length > 0) && (
+              <Disclosure summary="Benefits" defaultOpen summaryClassName={PDP_SUMMARY}>
+                {!hideBenefits && product.benefits.length > 0 && (
                   <ul className="space-y-2">
                     {product.benefits.map(b => (
-                      <li key={b} className="flex items-center gap-3 text-[10px] md:text-sm">
-                        <Check className="size-2.5 md:size-4 text-gold shrink-0" /> {b}
+                      <li key={b} className="flex items-start gap-3">
+                        <Check aria-hidden className="mt-1 size-4 shrink-0 text-navy" /> {b}
                       </li>
                     ))}
                   </ul>
-                </>
-              )}
-              {product.concerns.length > 0 && (
-                <>
-                  <h4 className="mt-7 mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Best for</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {product.concerns.map(c => (
-                      <Link
-                        key={c}
-                        href={`/concern/${c.toLowerCase().replace(/\s+/g, "-")}`}
-                        className="border border-border px-3 py-1 text-xs font-light transition-colors hover:border-gold hover:text-gold"
-                      >
-                        {c}
-                      </Link>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {tab === "how-to-use" && (
-            <>
-              <h4 className="mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Application</h4>
-              <p>
-                Apply a small amount to clean, {product.category === "Sunscreen" ? "dry" : "slightly damp"} skin.
-                {product.category === "Serums" || product.category === "Treatments"
-                  ? " Use 3–4 drops and gently press into the skin. Allow to absorb fully before applying moisturiser and SPF in the AM."
-                  : product.category === "Cleansers"
-                    ? " Massage gently over face and neck for 30 seconds. Rinse thoroughly with lukewarm water. Pat dry."
-                    : " Massage gently using upward circular motions until fully absorbed. Follow with SPF in the AM."}
+                )}
+                {product.concerns.length > 0 && (
+                  <>
+                    <p className="mb-2 mt-5 text-xs font-medium uppercase tracking-[0.14em] text-foreground">Best for</p>
+                    <div className="flex flex-wrap gap-2">
+                      {product.concerns.map(c => (
+                        <CatalogChip key={c} label={c} href={`/concern/${slugifyCatalogLabel(c)}`} linked={PINNED_CONCERNS.has(c)} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </Disclosure>
+            )}
+            {howToUse && (
+              <Disclosure summary="How to use" summaryClassName={PDP_SUMMARY}>
+                <p className="whitespace-pre-line">{howToUse}</p>
+              </Disclosure>
+            )}
+            {product.ingredients.length > 0 && (
+              <Disclosure summary="Key ingredients" summaryClassName={PDP_SUMMARY}>
+                <div className="flex flex-wrap gap-2">
+                  {product.ingredients.map(i => (
+                    <CatalogChip key={i} label={i} href={`/ingredient/${slugifyCatalogLabel(i)}`} linked={PINNED_INGREDIENTS.has(i)} />
+                  ))}
+                </div>
+                <p className="mt-3 text-xs">Check the product packaging for the full ingredient list.</p>
+              </Disclosure>
+            )}
+            <Disclosure summary="Delivery & returns" summaryClassName={PDP_SUMMARY}>
+              <p>{FREE_STANDARD_DELIVERY} (5–7 business days). Express delivery is <Money amount={3000} /> (2–3 business days), chosen at checkout.</p>
+              <p className="mt-2">
+                See our <Link href="/shipping" prefetch={false} className="text-navy underline underline-offset-4">shipping</Link> and{" "}
+                <Link href="/returns" prefetch={false} className="text-navy underline underline-offset-4">returns</Link> pages for details.
               </p>
-              <h4 className="mt-7 mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">When to use</h4>
-              <p>
-                {product.category === "Sunscreen"
-                  ? "Apply as the last step in your morning routine, 15 minutes before sun exposure. Reapply every 2 hours outdoors."
-                  : product.category === "Treatments"
-                    ? "Evening use recommended. Start 2–3 times per week and increase frequency as tolerated. Always follow with SPF the next morning."
-                    : "Use morning and/or evening as part of your regular skincare routine."}
-              </p>
-              <h4 className="mt-7 mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Tips</h4>
-              <ul className="list-disc pl-5 space-y-2 text-sm">
-                <li>Patch test on the inner arm before first use if you have sensitive skin</li>
-                <li>Store in a cool, dry place away from direct sunlight</li>
-                <li>Consistent use over 4–6 weeks is recommended to see full results</li>
-              </ul>
-            </>
-          )}
-
-          {tab === "ingredients" && (
-            <>
-              <h4 className="mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Key Ingredients</h4>
-              <div className="flex flex-wrap gap-2 mb-6">
-                {product.ingredients.map(i => (
-                  <Link
-                    key={i}
-                    href={`/ingredient/${slugifyCatalogLabel(i)}`}
-                    className="border border-gold/40 bg-lavender px-3 py-1.5 text-xs font-light text-gold transition-colors hover:bg-lavender"
-                  >
-                    {i}
-                  </Link>
-                ))}
-              </div>
-              <h4 className="mb-3 text-sm font-medium uppercase tracking-[0.15em] text-foreground">Full Ingredient List</h4>
-              <p className="text-sm font-light leading-relaxed">
-                Aqua, {product.ingredients.join(", ")}, Glycerin, Sodium Hyaluronate, Panthenol, Allantoin, Tocopherol, Carbomer, Sodium Hydroxide, Phenoxyethanol, Ethylhexylglycerin.
-              </p>
-              <p className="mt-4 text-xs font-light text-muted-foreground/70">
-                * Full ingredient list for reference purposes. Always check physical packaging for the most accurate information.
-              </p>
-            </>
-          )}
+            </Disclosure>
+          </div>
         </div>
       </div>
+
+      <StickyBuyBar
+        watchRef={ctaRef}
+        name={product.name}
+        brand={product.brand}
+        image={gallery[0]}
+        amount={unitPrice}
+        compareAt={unitPrice < skuPrice ? skuPrice : null}
+        disabled={!inStock}
+        added={added}
+        onAdd={handleAdd}
+      />
     </section>
   )
 }

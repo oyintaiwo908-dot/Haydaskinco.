@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendContactNotify } from "@/lib/email/send"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { EMAIL_RE, errorResponse, jsonError, readJsonObject, stringField } from "@/lib/api-guard"
 
 export async function POST(request: Request) {
   try {
@@ -12,19 +11,19 @@ export async function POST(request: Request) {
     const limited = await rateLimit(`contact:${ip}`, 5, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = await request.json()
-    const name = typeof body.name === "string" ? body.name.trim() : ""
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
-    const subject = typeof body.subject === "string" ? body.subject.trim() : ""
-    const message = typeof body.message === "string" ? body.message.trim() : ""
+    const body = await readJsonObject(request, 16_000)
+    const name = stringField(body, "name", 120, "Name")
+    const email = stringField(body, "email", 254, "Email").toLowerCase()
+    const subject = stringField(body, "subject", 200, "Subject")
+    const message = stringField(body, "message", 5_000, "Message")
 
     if (!name || !EMAIL_RE.test(email) || !message) {
-      return NextResponse.json({ error: "Name, email, and message are required." }, { status: 400 })
+      return jsonError("Name, email, and message are required.", 400)
     }
 
     const db = createAdminClient() ?? (await createClient())
     if (!db) {
-      return NextResponse.json({ error: "Database not configured." }, { status: 503 })
+      return jsonError("Messages are temporarily unavailable.", 503)
     }
 
     const { error } = await db.from("contact_submissions").insert({
@@ -36,17 +35,13 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[contact]", error.message)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return jsonError("Could not send your message. Please try again.", 500)
     }
 
     await sendContactNotify({ name, email, subject, message })
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("[contact]", err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Send failed." },
-      { status: 500 },
-    )
+    return errorResponse("contact", err, "Send failed.")
   }
 }

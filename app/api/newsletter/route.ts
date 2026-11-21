@@ -4,8 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { NEWSLETTER_PROMO_CODE } from "@/lib/email/client"
 import { sendNewsletterWelcome } from "@/lib/email/send"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { EMAIL_RE, errorResponse, jsonError, readJsonObject, stringField } from "@/lib/api-guard"
 
 export async function POST(request: Request) {
   try {
@@ -13,17 +12,21 @@ export async function POST(request: Request) {
     const limited = await rateLimit(`newsletter:${ip}`, 8, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = await request.json()
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
-    const source = typeof body.source === "string" ? body.source.slice(0, 40) : "site"
+    const body = await readJsonObject(request, 2_000)
+    const email = stringField(body, "email", 254, "Email").toLowerCase()
+    const source = stringField(body, "source", 40, "Source") || "site"
 
     if (!EMAIL_RE.test(email)) {
-      return NextResponse.json({ error: "Valid email required." }, { status: 400 })
+      return jsonError("Valid email required.", 400)
     }
+
+    // Per-address cap so one inbox cannot be targeted from many IPs.
+    const perEmail = await rateLimit(`newsletter-email:${email}`, 3, 60 * 60_000)
+    if (!perEmail.ok) return rateLimitResponse(perEmail.retryAfterSec)
 
     const db = createAdminClient() ?? (await createClient())
     if (!db) {
-      return NextResponse.json({ error: "Database not configured." }, { status: 503 })
+      return jsonError("Sign-ups are temporarily unavailable.", 503)
     }
 
     const { error } = await db.from("newsletter_subscribers").insert({
@@ -32,36 +35,28 @@ export async function POST(request: Request) {
       discount_code: NEWSLETTER_PROMO_CODE,
     })
 
-    let already = false
     if (error) {
       if (error.code === "23505") {
-        already = true
-      } else {
-        console.error("[newsletter]", error.message)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        // Already subscribed: do not send another email (stops using this
+        // endpoint to mail arbitrary addresses) and do not reveal membership.
+        return NextResponse.json({ ok: true })
       }
+      console.error("[newsletter]", error.message)
+      return jsonError("Could not subscribe. Please try again.", 500)
     }
 
     const mail = await sendNewsletterWelcome({ to: email, promoCode: NEWSLETTER_PROMO_CODE })
     if (!mail.ok) {
-      return NextResponse.json(
-        {
-          error:
-            mail.error ??
-            "Could not send welcome email. Until your domain is verified in Resend, you can only send to the email on your Resend account.",
-          saved: true,
-          already,
-        },
-        { status: 502 },
+      console.error("[newsletter] welcome email:", mail.error)
+      return jsonError(
+        "You're subscribed, but we couldn't send the welcome email. Please try again later.",
+        502,
+        { saved: true },
       )
     }
 
-    return NextResponse.json({ ok: true, already, skipped: mail.skipped ?? false })
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("[newsletter]", err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Subscribe failed." },
-      { status: 500 },
-    )
+    return errorResponse("newsletter", err, "Subscribe failed.")
   }
 }

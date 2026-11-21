@@ -38,15 +38,14 @@ export function ShareButtons({ title, slug }: { title: string; slug: string }) {
 
   return (
     <div className="mt-10 flex flex-wrap items-center gap-3 border-t border-border pt-8">
-      <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Share</span>
+      <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Share</span>
 
       {/* X / Twitter */}
       <a
         href={`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 border border-border px-4 py-2 text-xs font-light text-foreground/70 transition-all hover:border-foreground hover:text-foreground"
-        aria-label="Share on X"
+        className="flex min-h-11 items-center gap-2 rounded-control border border-input px-4 text-sm text-foreground transition-colors hover:border-navy"
       >
         <XIcon /> Share on X
       </a>
@@ -56,8 +55,7 @@ export function ShareButtons({ title, slug }: { title: string; slug: string }) {
         href={`https://wa.me/?text=${encodedTitle}%20${encodedUrl}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 border border-[#25D366]/40 bg-[#25D366]/5 px-4 py-2 text-xs font-light text-[#25D366] transition-all hover:bg-[#25D366]/10"
-        aria-label="Share on WhatsApp"
+        className="flex min-h-11 items-center gap-2 rounded-control border border-[#0B6E5F]/40 px-4 text-sm text-[#0B6E5F] transition-colors hover:bg-[#0B6E5F]/5"
       >
         <WhatsAppIcon /> WhatsApp
       </a>
@@ -66,12 +64,11 @@ export function ShareButtons({ title, slug }: { title: string; slug: string }) {
       <button
         type="button"
         onClick={copyLink}
-        className="flex items-center gap-2 border border-border px-4 py-2 text-xs font-light text-foreground/70 transition-all hover:border-foreground hover:text-foreground"
-        aria-label="Copy article link"
+        className="flex min-h-11 items-center gap-2 rounded-control border border-input px-4 text-sm text-foreground transition-colors hover:border-navy"
       >
         {copied
-          ? <><Check className="size-3.5 text-green-600" /> Copied!</>
-          : <><Link2 className="size-3.5" /> Copy Link</>
+          ? <><Check aria-hidden className="size-4 text-success" /> Link copied</>
+          : <><Link2 aria-hidden className="size-4" /> Copy link</>
         }
       </button>
     </div>

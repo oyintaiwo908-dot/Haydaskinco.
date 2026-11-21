@@ -178,7 +178,7 @@ export default function RewardsPage() {
                 </div>
                 <span className={cn(
                   "font-medium tabular-nums text-sm",
-                  h.points > 0 ? "text-green-600" : "text-red-600",
+                  h.points > 0 ? "text-success" : "text-red-600",
                 )}>
                   {h.points > 0 ? `+${h.points}` : h.points} pts
                 </span>

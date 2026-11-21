@@ -1,110 +1,59 @@
+import type { Metadata } from "next"
 import { Suspense } from "react"
 import { PageHeader } from "@/components/page-header"
+import { ProductCard } from "@/components/product-card"
 import { ShopGrid } from "@/components/shop-grid"
-import { ALL_SKIN_TYPES, resolveCatalogLabel } from "@/lib/catalog"
-import { getCategoryTree, resolveCategoryName } from "@/lib/supabase/categories"
+import { ShopHeading, type ShopHeadingText } from "@/components/shop-heading"
+import { ShopToolbar } from "@/components/shop-toolbar"
 import { queryProducts } from "@/lib/supabase/products"
 import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
 
-type ShopSearch = {
-  category?: string
-  brand?: string
-  skinType?: string
-  sale?: string
-  filter?: string
+/**
+ * /shop is static with 1h ISR (admin product saves refresh it on demand).
+ * Do not read `searchParams` here: that makes every visit, filter click and prefetch a
+ * Vercel Function render. Filters (?category, ?brand, ?skinType, ?sale, ?filter) are
+ * applied in the browser by ShopHeading and ShopGrid, which already query Supabase directly.
+ */
+export const revalidate = 3600
+
+const DEFAULT_HEADING: ShopHeadingText = {
+  eyebrow: "All Products",
+  title: "Shop All Skincare",
+  description: `Trusted brands. Authentic products. ${FREE_STANDARD_DELIVERY}.`,
 }
 
-function decodeParam(value?: string) {
-  if (!value) return undefined
-  try {
-    const decoded = decodeURIComponent(value).trim()
-    return decoded || undefined
-  } catch {
-    const trimmed = value.trim()
-    return trimmed || undefined
-  }
+export const metadata: Metadata = {
+  title: "Shop All Skincare — HAYDA SKINCo.",
+  description: DEFAULT_HEADING.description,
+  // Filtered URLs (/shop?category=…) serve the same HTML, so they canonicalise to /shop.
+  alternates: { canonical: "/shop" },
 }
 
-async function resolveShopCollection(sp: ShopSearch) {
-  const tree = await getCategoryTree()
-  const categoryName = sp.category
-    ? resolveCategoryName(tree, sp.category) ?? undefined
-    : undefined
-  const brandParam = decodeParam(sp.brand)
-  const brandName = brandParam && brandParam !== "All" ? brandParam : undefined
-  const skinParam = decodeParam(sp.skinType)
-  const skinName = skinParam && skinParam !== "All"
-    ? resolveCatalogLabel(ALL_SKIN_TYPES, skinParam) ?? skinParam
-    : undefined
-  const onSale = sp.sale === "true"
-  const browse =
-    sp.filter === "concerns" ? "concern" : sp.filter === "ingredients" ? "ingredient" : undefined
-  const named = [brandName, categoryName, skinName].filter((part): part is string => Boolean(part))
-
-  let eyebrow = "All Products"
-  let title = "Shop All Skincare"
-  let description = `Trusted brands. Authentic products. ${FREE_STANDARD_DELIVERY}.`
-
-  if (named.length > 1) {
-    eyebrow = "Shop"
-    title = named.join(" · ")
-    description = `${title}. ${FREE_STANDARD_DELIVERY}.`
-  } else if (categoryName) {
-    eyebrow = "Shop"
-    title = categoryName
-    description = `${categoryName} from HAYDA SKINCo. ${FREE_STANDARD_DELIVERY}.`
-  } else if (brandName) {
-    eyebrow = "Shop by brand"
-    title = brandName
-    description = `Authentic ${brandName} products. ${FREE_STANDARD_DELIVERY}.`
-  } else if (skinName) {
-    eyebrow = "Shop by skin type"
-    title = skinName
-    description = `Skincare for ${skinName.toLowerCase()}. ${FREE_STANDARD_DELIVERY}.`
-  } else if (onSale) {
-    eyebrow = "Offers"
-    title = "Sale"
-    description = `Discounted skincare, while stocks last. ${FREE_STANDARD_DELIVERY}.`
-  } else if (browse === "concern") {
-    eyebrow = "Discover"
-    title = "Shop by Concern"
-    description = `Choose a skin concern and see the products made for it. ${FREE_STANDARD_DELIVERY}.`
-  } else if (browse === "ingredient") {
-    eyebrow = "Discover"
-    title = "Shop by Ingredient"
-    description = `Choose an ingredient and see the products that use it. ${FREE_STANDARD_DELIVERY}.`
-  }
-
-  return { eyebrow, title, description, categoryName, brandName, skinName, onSale }
-}
-
-export default async function ShopPage({
-  searchParams,
-}: {
-  searchParams: Promise<ShopSearch>
-}) {
-  const heading = await resolveShopCollection(await searchParams)
-  const products = await queryProducts({
-    category: heading.categoryName,
-    brand: heading.brandName,
-    skinType: heading.skinName,
-    discountOnly: heading.onSale || undefined,
-    sort: "featured",
-    limit: 96,
-  })
+export default async function ShopPage() {
+  const products = await queryProducts({ sort: "featured", limit: 96 })
 
   return (
     <>
-      <PageHeader
-        eyebrow={heading.eyebrow}
-        title={heading.title}
-        description={heading.description}
-      />
-      <Suspense>
-        <ShopGrid
-          initialProducts={products}
-          initialCategory={heading.categoryName ?? "All"}
-        />
+      <Suspense fallback={<PageHeader {...DEFAULT_HEADING} />}>
+        <ShopHeading fallback={DEFAULT_HEADING} />
+      </Suspense>
+      {/* Server HTML (and crawlers) get the full product list; the interactive grid takes over in the browser. */}
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-7xl px-5 py-8 md:py-12 lg:px-8">
+            {/* Same toolbar as ShopGrid (inert here) so the grid does not jump when it hydrates. */}
+            <div className="lg:ml-[calc(260px+3rem)]">
+              <ShopToolbar placeholder countLabel={`${products.length} product${products.length === 1 ? "" : "s"}`} />
+            </div>
+            <div className="grid grid-cols-2 items-start gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-6 md:gap-y-12 lg:ml-[calc(260px+3rem)] xl:grid-cols-4">
+              {products.map((p, i) => (
+                <ProductCard key={p.id} product={p} index={i} />
+              ))}
+            </div>
+          </div>
+        }
+      >
+        <ShopGrid initialProducts={products} />
       </Suspense>
     </>
   )

@@ -1,28 +1,31 @@
+import type { ReactNode } from "react"
+
+/** Compact page heading band for listing and content pages. */
 export function PageHeader({
   eyebrow,
   title,
   description,
+  children,
 }: {
   eyebrow?: string
   title: string
   description?: string
+  /** Optional slot under the description (e.g. breadcrumbs or a meta line). */
+  children?: ReactNode
 }) {
   return (
-    <section className="border-b border-border bg-secondary">
-      <div className="mx-auto w-full min-w-0 max-w-3xl px-5 py-14 text-center md:py-20 lg:px-8">
+    <section className="border-b border-border/70 bg-porcelain">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-5 py-10 md:py-14 lg:px-8">
         {eyebrow && (
-          <p className="animate-fade-up text-[11px] font-light uppercase tracking-[0.28em] break-words text-gold">
-            {eyebrow}
-          </p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-rose break-words">{eyebrow}</p>
         )}
-        <h1 className="mx-auto mt-4 w-full min-w-0 max-w-full animate-fade-up text-wrap font-serif text-4xl font-medium leading-[1.15] break-words whitespace-normal text-foreground md:text-5xl md:leading-[1.12]">
+        <h1 className="mt-3 max-w-3xl font-serif text-[clamp(2rem,1.5rem+2vw,3.25rem)] font-normal leading-[1.08] tracking-[-0.01em] text-navy-deep text-balance break-words">
           {title}
         </h1>
         {description && (
-          <p className="mx-auto mt-5 max-w-xl animate-fade-up text-sm font-light leading-relaxed break-words whitespace-normal text-muted-foreground md:text-base">
-            {description}
-          </p>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground break-words">{description}</p>
         )}
+        {children}
       </div>
     </section>
   )

@@ -1,21 +1,25 @@
 import type { Metadata, Viewport } from 'next'
-import { DM_Sans, Cormorant_Garamond, Geist_Mono } from 'next/font/google'
+import { Geist, Cormorant_Garamond, Geist_Mono } from 'next/font/google'
 import { getSiteUrl } from '@/lib/site'
 import './globals.css'
 
-const dmSans = DM_Sans({
-  variable: '--font-dm-sans',
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
-})
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+// Variable fonts: one file per subset covers every weight in use.
+// Geist has no naira glyph (U+20A6) in any subset. Prices render through <Money>
+// (components/ui/price.tsx), which sets ₦ in `.currency` with Cormorant: its
+// latin-ext file carries the glyph, so the sign never falls back to a system font.
+const geist = Geist({
+  variable: '--font-geist-sans',
   subsets: ['latin'],
 })
 const cormorant = Cormorant_Garamond({
   variable: '--font-cormorant',
+  subsets: ['latin', 'latin-ext'],
+})
+// Order references only; not worth a preload.
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
+  preload: false,
 })
 
 const siteUrl = getSiteUrl()
@@ -132,8 +136,8 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
-      lang="en"
-      className={`light bg-background ${dmSans.variable} ${geistMono.variable} ${cormorant.variable}`}
+      lang="en-NG"
+      className={`light bg-background ${geist.variable} ${geistMono.variable} ${cormorant.variable}`}
     >
       <body className="font-sans antialiased">{children}</body>
     </html>

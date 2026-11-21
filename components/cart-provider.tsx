@@ -154,11 +154,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [session])
 
-  // Persist guest cart only (signed-in cart is written on each mutation)
+  // Persist guest cart only (signed-in cart is written on each mutation). Waits for the load
+  // above to commit (`loading` false): checking a ref here let the first run write the initial
+  // empty list over the stored cart, which emptied the cart on reload under React StrictMode
+  // (dev) and in any render where this effect ran before the loaded items were applied.
   useEffect(() => {
-    if (!syncReady.current || session) return
+    if (loading || !syncReady.current || session) return
     writeGuestCart(items)
-  }, [items, session])
+  }, [items, session, loading])
 
   // Refresh stock when cart opens or items change while open
   useEffect(() => {

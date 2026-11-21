@@ -2,11 +2,10 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { readJsonObject, stringField, ValidationError } from "@/lib/api-guard"
 
-const FALLBACK: Record<string, number> = {
-  HAYDA10: 10,
-  WELCOME15: 15,
-  SKINCARE20: 20,
+function invalid(message = "Invalid promo code.", status = 200) {
+  return NextResponse.json({ valid: false, message }, { status })
 }
 
 export async function POST(request: Request) {
@@ -15,50 +14,59 @@ export async function POST(request: Request) {
     const limited = await rateLimit(`promo:${ip}`, 30, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = await request.json()
-    const code = String(body.code ?? "").trim().toUpperCase()
+    const body = await readJsonObject(request, 1_000)
+    const code = stringField(body, "code", 40, "Promo code").toUpperCase()
     if (!code) {
-      return NextResponse.json({ valid: false, message: "Enter a promo code." }, { status: 400 })
+      return invalid("Enter a promo code.", 400)
     }
 
-    const admin = createAdminClient()
-    const server = admin ?? (await createClient())
-
-    if (!server) {
-      if (process.env.NODE_ENV === "production") {
-        return NextResponse.json({ valid: false, message: "Could not validate promo." }, { status: 503 })
-      }
-      const pct = FALLBACK[code]
-      if (!pct) {
-        return NextResponse.json({ valid: false, message: "Invalid promo code." })
-      }
-      return NextResponse.json({ valid: true, code, discount_pct: pct })
+    const db = createAdminClient()
+    if (!db) {
+      console.error("[promo] SUPABASE_SERVICE_ROLE_KEY is not configured")
+      return invalid("Could not validate promo.", 503)
     }
 
-    const { data, error } = await server
+    const { data, error } = await db
       .from("promo_codes")
       .select("code, discount_pct, discount_ngn, max_uses, used_count, expires_at, is_active")
       .eq("code", code)
       .maybeSingle()
 
     if (error || !data || !data.is_active) {
-      return NextResponse.json({ valid: false, message: "Invalid promo code." })
+      return invalid()
     }
     if (data.expires_at && new Date(data.expires_at) < new Date()) {
-      return NextResponse.json({ valid: false, message: "This promo code has expired." })
+      return invalid("This promo code has expired.")
     }
     if (data.max_uses != null && data.used_count >= data.max_uses) {
-      return NextResponse.json({ valid: false, message: "This promo code has reached its limit." })
+      return invalid("This promo code has reached its limit.")
+    }
+
+    const isReward = code.startsWith("RWD-")
+    if (isReward) {
+      // Reward codes only work for the account that redeemed them (same rule as /api/orders).
+      const customer = await createClient("customer")
+      const user = customer ? (await customer.auth.getUser()).data.user : null
+      if (!user) return invalid("Sign in to use this rewards code.")
+      const { data: redemption } = await db
+        .from("reward_redemptions")
+        .select("id")
+        .eq("promo_code", code)
+        .eq("user_id", user.id)
+        .maybeSingle()
+      if (!redemption) return invalid()
     }
 
     return NextResponse.json({
       valid: true,
       code: data.code,
+      kind: isReward ? "reward" : "promo",
       discount_pct: data.discount_pct ?? 0,
       discount_ngn: data.discount_ngn ?? 0,
     })
   } catch (err) {
+    if (err instanceof ValidationError) return invalid(err.message, 400)
     console.error("[promo]", err)
-    return NextResponse.json({ valid: false, message: "Could not validate promo." }, { status: 500 })
+    return invalid("Could not validate promo.", 500)
   }
 }

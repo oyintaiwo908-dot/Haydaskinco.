@@ -52,7 +52,7 @@ type FormState = {
 }
 
 const inputClass =
-  "w-full border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+  "w-full border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
 
 /** Split pasted benefit prose on sentence boundaries (full stops). */
 function splitBenefitsPaste(raw: string): string[] {
@@ -371,7 +371,9 @@ export function AdminProductForm({ product }: { product?: Product }) {
 
       await saveProduct(payload, product?.id)
       const { revalidateProducts } = await import("@/app/actions/revalidate")
-      await revalidateProducts(payload.id || product?.id)
+      // Save already succeeded; a refused refresh only delays the storefront (≤1h ISR window).
+      const refreshed = await revalidateProducts(payload.id || product?.id)
+      if (!refreshed.ok) console.warn("[product] storefront refresh skipped:", refreshed.error)
     } catch (err) {
       console.error("Failed to save product:", err)
       setUploadError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
@@ -394,7 +396,8 @@ export function AdminProductForm({ product }: { product?: Product }) {
     try {
       await setProductArchived(product.id, !product.archived)
       const { revalidateProducts } = await import("@/app/actions/revalidate")
-      await revalidateProducts(product.id)
+      const refreshed = await revalidateProducts(product.id)
+      if (!refreshed.ok) console.warn("[product] storefront refresh skipped:", refreshed.error)
       router.push("/admin/products")
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Could not update archive status.")

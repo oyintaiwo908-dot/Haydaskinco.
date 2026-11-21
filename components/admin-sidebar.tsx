@@ -165,8 +165,10 @@ export function AdminSidebar() {
               const active = pathname === item.href || pathname.startsWith(item.href + "/")
               return (
                 <li key={item.href}>
+                  {/* prefetch off: each admin prefetch is a dynamic render with auth checks (Vercel CPU budget). */}
                   <Link
                     href={item.href}
+                    prefetch={false}
                     onClick={() => setMobileOpen(false)}
                     className={cn(
                       "group flex items-center justify-between rounded-sm px-3 py-2.5 text-sm transition-all duration-150",

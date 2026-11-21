@@ -96,22 +96,6 @@ export function rowToOrder(row: any): Order {
   }
 }
 
-export async function getAllOrders(): Promise<Order[]> {
-  const supabase = createAdminBrowserClient()
-  if (!supabase) return mockOrders
-
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    console.error("[orders] getAllOrders:", error.message)
-    return []
-  }
-  return (data ?? []).map(rowToOrder)
-}
-
 export type OrdersPageQuery = {
   search?: string
   status?: OrderStatus | "all"
@@ -370,22 +354,6 @@ export async function getMyOrders(): Promise<Order[]> {
   return Array.from(byRef.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )
-}
-
-export async function updateOrderStatus(
-  reference: string,
-  status: OrderStatus,
-): Promise<string | null> {
-  const supabase = createAdminBrowserClient()
-  if (!supabase) return "Supabase not configured."
-
-  const { error } = await supabase
-    .from("orders")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("reference", reference)
-
-  if (error) return error.message
-  return null
 }
 
 /**

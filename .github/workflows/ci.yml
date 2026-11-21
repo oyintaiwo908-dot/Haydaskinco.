@@ -5,17 +5,72 @@ on:
     branches: [main, master]
   pull_request:
 
+# Least privilege for the GITHUB_TOKEN: this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  typecheck:
+  checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          persist-credentials: false
+      # Version comes from the packageManager field in package.json
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # Lint reports existing findings without failing the build until the
+      # backlog (mostly react-hooks/set-state-in-effect) is cleared; then drop
+      # `continue-on-error`.
+      - run: pnpm lint
+        continue-on-error: true
+      - run: pnpm audit --prod --audit-level high
+      - name: Build (placeholder env, no secrets)
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          NEXT_PUBLIC_SITE_URL: https://example.com
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  e2e:
+    # Playwright against a production build in mock mode: e2e/server.mjs blanks every
+    # Supabase / Paystack / Resend variable and blocks outbound requests from the server.
+    # No secrets are available or needed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run e2e suite
+        run: pnpm test:e2e
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

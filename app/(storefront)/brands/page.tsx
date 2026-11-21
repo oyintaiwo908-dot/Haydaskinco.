@@ -14,7 +14,8 @@ export const metadata: Metadata = {
     "Shop all brands stocked by HAYDA SKINCo. — CeraVe, The Ordinary, La Roche-Posay, COSRX, Paula's Choice, and more.",
 }
 
-export const revalidate = 60
+/** 1h ISR; admin saves refresh it on demand (app/actions/revalidate.ts). Short windows burn Vercel CPU. */
+export const revalidate = 3600
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
 

@@ -17,26 +17,130 @@ import { type CheckoutItem } from "@/lib/supabase/orders"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 import { getSiteUrl } from "@/lib/site"
 import { isMissingArchiveColumn, markArchiveColumnMissing } from "@/lib/supabase/archive-column"
+import {
+  EMAIL_RE,
+  ValidationError,
+  errorResponse,
+  jsonError,
+  readJsonObject,
+  stringField,
+} from "@/lib/api-guard"
+
+type Shipping = {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  address: string
+  apartment: string
+  city: string
+  state: string
+  zip: string
+  country: string
+  shippingMethod: "standard" | "express"
+}
 
 type Body = {
   items: CheckoutItem[]
-  shipping: {
-    firstName: string
-    lastName: string
-    email: string
-    phone: string
-    address: string
-    apartment?: string
-    city: string
-    state: string
-    zip: string
-    country: string
-    shippingMethod: "standard" | "express"
+  shipping: Shipping
+  paymentMethod: PaymentMethod
+  promoCodes: string[]
+}
+
+const MAX_LINES = 50
+const MAX_QTY = 999
+const PAYMENT_METHODS = ["card", "bank_transfer", "ussd", "mobile_money"] as const
+type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+const MAX_PROMO_CODES = 2
+
+const PROMO_STACKING_ERROR =
+  "Only one promo code and one rewards code can be used per order. Remove the extra code and try again."
+
+function isRewardCode(code: string) {
+  return code.startsWith("RWD-")
+}
+
+/** Validate and normalise the checkout payload. Prices from the client are ignored. */
+function parseBody(raw: Record<string, unknown>): Body {
+  if (!Array.isArray(raw.items)) throw new ValidationError("Cart is empty.")
+  if (raw.items.length === 0) throw new ValidationError("Cart is empty.")
+  if (raw.items.length > MAX_LINES) {
+    throw new ValidationError(`A single order can hold at most ${MAX_LINES} different items.`)
   }
-  paymentMethod: string
-  /** @deprecated use promoCodes */
-  promoCode?: string | null
-  promoCodes?: string[] | null
+
+  const items: CheckoutItem[] = raw.items.map(entry => {
+    if (!entry || typeof entry !== "object") throw new ValidationError("Invalid cart line.")
+    const line = entry as Record<string, unknown>
+    const productId = stringField(line, "productId", 160, "Product id")
+    if (!productId) throw new ValidationError("Invalid cart line.")
+    const quantity = Math.floor(Number(line.quantity))
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAX_QTY) {
+      throw new ValidationError(`Quantity must be between 1 and ${MAX_QTY}.`)
+    }
+    const skuPrice = line.skuPrice == null ? undefined : Number(line.skuPrice)
+    return {
+      productId,
+      name: stringField(line, "name", 200, "Item name"),
+      image: stringField(line, "image", 500, "Item image"),
+      category: stringField(line, "category", 120, "Item category"),
+      price: 0,
+      quantity,
+      skuPrice: Number.isFinite(skuPrice) ? skuPrice : undefined,
+    }
+  })
+
+  const s = raw.shipping
+  if (!s || typeof s !== "object" || Array.isArray(s)) {
+    throw new ValidationError("Incomplete shipping details.")
+  }
+  const ship = s as Record<string, unknown>
+  const method = ship.shippingMethod ?? "standard"
+  if (method !== "standard" && method !== "express") {
+    throw new ValidationError("Choose a valid shipping method.")
+  }
+  const shipping: Shipping = {
+    firstName: stringField(ship, "firstName", 80, "First name"),
+    lastName: stringField(ship, "lastName", 80, "Last name"),
+    email: stringField(ship, "email", 254, "Email").toLowerCase(),
+    phone: stringField(ship, "phone", 40, "Phone"),
+    address: stringField(ship, "address", 200, "Address"),
+    apartment: stringField(ship, "apartment", 120, "Apartment"),
+    city: stringField(ship, "city", 80, "City"),
+    state: stringField(ship, "state", 80, "State"),
+    zip: stringField(ship, "zip", 20, "Postal code"),
+    country: stringField(ship, "country", 60, "Country") || "Nigeria",
+    shippingMethod: method,
+  }
+  if (!shipping.email || !shipping.address || !shipping.city) {
+    throw new ValidationError("Incomplete shipping details.")
+  }
+  if (!EMAIL_RE.test(shipping.email)) throw new ValidationError("Enter a valid email address.")
+
+  const pm = raw.paymentMethod ?? "card"
+  if (typeof pm !== "string" || !(PAYMENT_METHODS as readonly string[]).includes(pm)) {
+    throw new ValidationError("Choose a valid payment method.")
+  }
+
+  const rawCodes = [
+    ...(Array.isArray(raw.promoCodes) ? raw.promoCodes : []),
+    // Legacy single-code field
+    raw.promoCode ?? "",
+  ]
+  if (rawCodes.length > 10) throw new ValidationError(PROMO_STACKING_ERROR)
+  const promoCodes = Array.from(
+    new Set(
+      rawCodes
+        .map(c => (typeof c === "string" ? c : "").trim().toUpperCase())
+        .filter(c => c.length > 0 && c.length <= 40),
+    ),
+  )
+  const rewardCount = promoCodes.filter(isRewardCode).length
+  const regularCount = promoCodes.length - rewardCount
+  if (promoCodes.length > MAX_PROMO_CODES || rewardCount > 1 || regularCount > 1) {
+    throw new ValidationError(PROMO_STACKING_ERROR)
+  }
+
+  return { items, shipping, paymentMethod: pm as PaymentMethod, promoCodes }
 }
 
 type PricedLine = {
@@ -98,15 +202,12 @@ function resolveCheckoutOrigin(request: Request): string {
   return site
 }
 
-function allowedSkuPrices(
-  basePrice: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  variants: any,
-): Set<number> {
+function allowedSkuPrices(basePrice: number, variants: unknown): Set<number> {
   const allowed = new Set<number>([Math.round(basePrice)])
   if (!Array.isArray(variants)) return allowed
-  for (const v of variants) {
-    const p = Math.round(Number(v?.price ?? v?.listPrice ?? NaN))
+  for (const entry of variants) {
+    const v = (entry ?? {}) as { price?: unknown; listPrice?: unknown }
+    const p = Math.round(Number(v.price ?? v.listPrice ?? NaN))
     if (Number.isFinite(p) && p > 0) allowed.add(p)
   }
   return allowed
@@ -118,24 +219,15 @@ export async function POST(request: Request) {
     const limited = await rateLimit(`orders-create:${ip}`, 10, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = (await request.json()) as Body
-    const items = body.items ?? []
+    const body = parseBody(await readJsonObject(request, 64_000))
+    const items = body.items
     const shipping = body.shipping
-
-    if (!items.length) {
-      return NextResponse.json({ error: "Cart is empty." }, { status: 400 })
-    }
-    if (!shipping?.email || !shipping?.address || !shipping?.city) {
-      return NextResponse.json({ error: "Incomplete shipping details." }, { status: 400 })
-    }
 
     const admin = createAdminClient()
     // Order insert policy is service-role only (migration 027)
     if (!admin) {
-      return NextResponse.json(
-        { error: "Server misconfigured (service role required for checkout)." },
-        { status: 503 },
-      )
+      console.error("[orders] SUPABASE_SERVICE_ROLE_KEY is not configured")
+      return jsonError("Checkout is temporarily unavailable.", 503)
     }
     const supabase = admin
 
@@ -206,11 +298,7 @@ export async function POST(request: Request) {
     }
 
     for (const item of items) {
-      const qty = Math.max(1, Math.floor(Number(item.quantity) || 0))
-      if (!item.productId || qty < 1) {
-        problems.push("Invalid cart line")
-        continue
-      }
+      const qty = item.quantity
 
       if (isDealCartId(item.productId)) {
         const deal = dealsById.get(bareDealId(item.productId))
@@ -248,7 +336,7 @@ export async function POST(request: Request) {
         pricedLines.push({
           productId: item.productId,
           name: String(deal.title || item.name),
-          image: String(deal.image_url || item.image || "/product-bundle.png"),
+          image: String(deal.image_url || "/placeholder.svg"),
           category: "Deal",
           price: salePrice,
           quantity: qty,
@@ -296,7 +384,7 @@ export async function POST(request: Request) {
       pricedLines.push({
         productId: item.productId,
         name: String(row.name || item.name),
-        image: String(row.image_url || item.image || "/placeholder.svg"),
+        image: String(row.image_url || "/placeholder.svg"),
         category,
         price: unit,
         quantity: qty,
@@ -318,7 +406,7 @@ export async function POST(request: Request) {
       )
     }
     if (!pricedLines.length) {
-      return NextResponse.json({ error: "Cart is empty." }, { status: 400 })
+      return jsonError("Cart is empty.", 400)
     }
 
     const subtotal = pricedLines.reduce((s, i) => s + i.price * i.quantity, 0)
@@ -337,27 +425,14 @@ export async function POST(request: Request) {
       const { data: { user } } = await browserish.auth.getUser()
       if (user?.id) {
         authUserId = user.id
-        if (
-          user.email &&
-          user.email.toLowerCase() === shipping.email.trim().toLowerCase()
-        ) {
+        if (user.email && user.email.toLowerCase() === shipping.email) {
           userId = user.id
         }
       }
     }
 
-    const requestedCodes = Array.from(
-      new Set(
-        [
-          ...(Array.isArray(body.promoCodes) ? body.promoCodes : []),
-          body.promoCode ?? "",
-        ]
-          .map(c => String(c ?? "").trim().toUpperCase())
-          .filter(Boolean),
-      ),
-    )
-
-    for (const code of requestedCodes) {
+    // parseBody already enforced: at most one regular code + one RWD- code.
+    for (const code of body.promoCodes) {
       const { data: promo } = await supabase
         .from("promo_codes")
         .select("*")
@@ -371,7 +446,7 @@ export async function POST(request: Request) {
       const exhausted = promo.max_uses != null && promo.used_count >= promo.max_uses
       let allowed = !expired && !exhausted
 
-      if (allowed && code.startsWith("RWD-")) {
+      if (allowed && isRewardCode(code)) {
         if (!authUserId) {
           allowed = false
         } else {
@@ -403,7 +478,7 @@ export async function POST(request: Request) {
     const orderRow = {
       reference,
       user_id: userId,
-      guest_email: shipping.email.trim().toLowerCase(),
+      guest_email: shipping.email,
       items: pricedLines,
       shipping_address: {
         firstName: shipping.firstName,
@@ -411,11 +486,11 @@ export async function POST(request: Request) {
         email: shipping.email,
         phone: shipping.phone,
         address: shipping.address,
-        apartment: shipping.apartment ?? "",
+        apartment: shipping.apartment,
         city: shipping.city,
         state: shipping.state,
         zip: shipping.zip,
-        country: shipping.country || "Nigeria",
+        country: shipping.country,
       },
       shipping_method: shipping.shippingMethod,
       shipping_cost: shippingCost,
@@ -427,7 +502,7 @@ export async function POST(request: Request) {
       total,
       status: "pending",
       payment_status: "unpaid",
-      payment_method: body.paymentMethod ?? "card",
+      payment_method: body.paymentMethod,
     }
 
     const { data: inserted, error: insertError } = await supabase
@@ -438,10 +513,7 @@ export async function POST(request: Request) {
 
     if (insertError || !inserted) {
       console.error("[orders] insert:", insertError?.message)
-      return NextResponse.json(
-        { error: insertError?.message ?? "Could not create order." },
-        { status: 500 },
-      )
+      return jsonError("Could not create order. Please try again.", 500)
     }
 
     // Allowlist checkout return host (env site URL + local only in non-prod).
@@ -460,10 +532,7 @@ export async function POST(request: Request) {
     }
 
     if (!isPaystackConfigured()) {
-      return NextResponse.json(
-        { error: "Payments are not configured." },
-        { status: 503 },
-      )
+      return jsonError("Payments are not configured.", 503)
     }
 
     const paystack = await initializeTransaction({
@@ -494,10 +563,6 @@ export async function POST(request: Request) {
       total,
     })
   } catch (err) {
-    console.error("[orders] POST:", err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Checkout failed." },
-      { status: 500 },
-    )
+    return errorResponse("orders", err, "Checkout failed. Please try again.")
   }
 }

@@ -11,7 +11,8 @@ export const metadata: Metadata = {
   description: "Shop sale items, limited-time deals, and discounted skincare at HAYDA SKINCo. Get premium skincare at the best prices.",
 }
 
-export const revalidate = 60
+/** 1h ISR; admin saves refresh it on demand (app/actions/revalidate.ts). Short windows burn Vercel CPU. */
+export const revalidate = 3600
 
 export default async function OffersPage() {
   const discountCount = await countProducts({ discountOnly: true })

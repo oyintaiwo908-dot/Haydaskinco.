@@ -1,30 +1,22 @@
 import { redirect } from "next/navigation"
 import { AdminAuthProvider } from "@/components/admin-auth-provider"
 import { AdminSidebar } from "@/components/admin-sidebar"
-import { isStoreRole } from "@/lib/admin-access"
-import { createAdminServerClient } from "@/lib/supabase/server"
+import { getAdminSession, isStoreRole } from "@/lib/admin-access"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createAdminServerClient()
+  // Cached per request: nested requireFullAdmin() layouts reuse this lookup.
+  const { configured, user, profile } = await getAdminSession()
 
   // Production: never serve admin UI without a configured Supabase project
-  if (!supabase) {
+  if (!configured) {
     if (process.env.NODE_ENV === "production" || process.env.NEXT_PUBLIC_SUPABASE_URL) {
       redirect("/admin/login")
     }
     // Local mock mode (no env) — client provider handles mock auth
   } else {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
     if (!user) {
       redirect("/admin/login")
     }
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, is_suspended")
-      .eq("id", user.id)
-      .maybeSingle()
     if (!profile || profile.is_suspended || !isStoreRole(profile.role)) {
       redirect(profile?.is_suspended ? "/admin/login?suspended=1" : "/admin/login")
     }

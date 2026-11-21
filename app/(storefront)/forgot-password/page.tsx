@@ -64,18 +64,20 @@ export default function ForgotPasswordPage() {
       ) : (
         <form onSubmit={handleSubmit} className="w-full space-y-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
+            <label htmlFor="forgot-email" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
               Email Address
             </label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <input
+                id="forgot-email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
               />
             </div>
           </div>

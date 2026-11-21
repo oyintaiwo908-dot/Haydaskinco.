@@ -1,33 +1,53 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState, type CSSProperties } from "react"
 import { Check, Plus, Heart } from "lucide-react"
 import { useCart } from "@/components/cart-provider"
 import { useFavorites } from "@/components/favorites-provider"
+import { announce, flyToBag } from "@/components/motion/fly-to-bag"
 import type { Product } from "@/lib/products"
 import { cn } from "@/lib/utils"
 
-/** Client islands for ProductCard — keeps the card shell RSC-friendly. */
+/** Visible on touch; on hover-capable pointers it appears on hover or keyboard focus. */
+const revealOnHover =
+  "[@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-focus-within:opacity-100"
+
+/**
+ * Client islands for ProductCard. Siblings of the card link (never nested inside it) and placed
+ * after the title in DOM order; both are positioned over the 4:5 image: the card is a size
+ * container, so the image height is 125cqw.
+ */
 export function ProductCardFavoriteButton({ product }: { product: Product }) {
   const { isFavorited, toggleFavorite } = useFavorites()
   const favorited = isFavorited(product.id)
+  // Bumps on each save so the burst replays (keyed remount).
+  const [burst, setBurst] = useState(0)
 
   return (
     <button
       type="button"
-      onClick={e => {
-        e.preventDefault()
+      onClick={() => {
         toggleFavorite(product)
+        if (!favorited) setBurst(b => b + 1)
+        announce(favorited ? `Removed ${product.name} from favourites` : `Saved ${product.name} to favourites`)
       }}
-      aria-label={favorited ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
+      aria-label={`Save ${product.name} to favourites`}
+      aria-pressed={favorited}
       className={cn(
-        "absolute right-3 top-3 z-10 flex size-6 items-center justify-center rounded-full border backdrop-blur-sm transition-opacity duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none md:size-8",
-        favorited
-          ? "border-gold/40 bg-lavender text-gold opacity-100"
-          : "border-background/30 bg-background/60 text-foreground/60 opacity-0 group-hover:opacity-100 hover:border-gold/40 hover:text-gold",
+        "absolute right-2 top-2 z-[3] flex size-11 items-center justify-center rounded-full transition-[opacity,color,background-color] duration-200 ease-atelier",
+        favorited ? "text-rose" : cn("text-navy hover:text-rose", revealOnHover),
       )}
     >
-      <Heart className={cn("size-2.5 md:size-3.5 transition-all", favorited && "fill-gold")} />
+      <span className="relative flex size-9 items-center justify-center rounded-full bg-white/90 shadow-sm">
+        <Heart key={burst} aria-hidden className={cn("size-4", favorited && "fill-current", burst > 0 && "heart-pop")} strokeWidth={1.5} />
+        {burst > 0 && (
+          <span key={`b${burst}`} className="heart-burst" aria-hidden>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <i key={i} style={{ "--i": i } as CSSProperties} />
+            ))}
+          </span>
+        )}
+      </span>
     </button>
   )
 }
@@ -35,31 +55,32 @@ export function ProductCardFavoriteButton({ product }: { product: Product }) {
 export function ProductCardAddButton({ product }: { product: Product }) {
   const { addItem } = useCart()
   const [added, setAdded] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const soldOut = product.stock === 0
 
   return (
-    <div className="absolute inset-x-3 bottom-3 z-10 opacity-0 transition-opacity duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] group-hover:opacity-100 motion-reduce:transition-none">
-      <button
-        type="button"
-        onClick={e => {
-          e.preventDefault()
-          addItem(product)
-          setAdded(true)
-          window.setTimeout(() => setAdded(false), 1600)
-        }}
-        aria-label={`Add ${product.name} to cart`}
-        className={cn(
-          "flex w-full items-center justify-center gap-2 border px-4 py-3 text-[11px] font-medium uppercase tracking-[0.18em] backdrop-blur-sm transition-colors duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
-          added
-            ? "border-gold bg-gold text-gold-foreground"
-            : "border-foreground bg-background/90 text-foreground hover:border-gold hover:bg-gold hover:text-gold-foreground",
-        )}
-      >
-        {added ? (
-          <><Check className="size-2.5 md:size-3.5" /> Added</>
-        ) : (
-          <><Plus className="size-2.5 md:size-3.5" /> Add to Cart</>
-        )}
-      </button>
-    </div>
+    <button
+      ref={ref}
+      type="button"
+      disabled={soldOut}
+      onClick={() => {
+        addItem(product)
+        flyToBag((ref.current?.closest("article")?.querySelector("[data-card-media]") ?? null) as HTMLElement | null)
+        announce(`Added ${product.name} to cart`)
+        setAdded(true)
+        window.setTimeout(() => setAdded(false), 1600)
+      }}
+      aria-label={soldOut ? `${product.name} is out of stock` : `Add ${product.name} to cart`}
+      data-added={added || undefined}
+      className={cn(
+        "card-quick absolute right-2 top-[calc(125cqw-3.25rem)] z-[3] flex size-11 items-center justify-center rounded-control border shadow-sm active:scale-95",
+        "disabled:cursor-not-allowed disabled:opacity-0",
+        added
+          ? "border-navy bg-navy text-primary-foreground"
+          : "border-navy/15 bg-white text-navy hover:border-navy hover:bg-navy hover:text-primary-foreground",
+      )}
+    >
+      {added ? <Check aria-hidden className="size-5" /> : <Plus aria-hidden className="size-5" strokeWidth={1.5} />}
+    </button>
   )
 }

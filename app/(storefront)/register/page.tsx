@@ -88,30 +88,30 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="w-full space-y-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Full Name</label>
+              <label htmlFor="register-name" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Full Name</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <input type="text" value={form.name} onChange={set("name")} placeholder="Your name" required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40" />
+                <input id="register-name" autoComplete="name" type="text" value={form.name} onChange={set("name")} placeholder="Your name" required
+                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground" />
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Email Address</label>
+              <label htmlFor="register-email" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Email Address</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <input type="email" value={form.email} onChange={set("email")} placeholder="you@example.com" required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40" />
+                <input id="register-email" autoComplete="email" type="email" value={form.email} onChange={set("email")} placeholder="you@example.com" required
+                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground" />
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Password</label>
+              <label htmlFor="register-password" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Password</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <input type={showPassword ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="••••••••" required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40" />
-                <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Hide" : "Show"}
+                <input id="register-password" autoComplete="new-password" type={showPassword ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="••••••••" required
+                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground" />
+                <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Hide password" : "Show password"}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -139,11 +139,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Confirm Password</label>
+              <label htmlFor="register-confirm" className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Confirm Password</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <input type="password" value={form.confirm} onChange={set("confirm")} placeholder="••••••••" required
-                  className={cn("w-full border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none transition-colors placeholder:text-muted-foreground/40",
+                <input id="register-confirm" autoComplete="new-password" type="password" value={form.confirm} onChange={set("confirm")} placeholder="••••••••" required
+                  className={cn("w-full border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none transition-colors placeholder:text-muted-foreground",
                     form.confirm && form.confirm !== form.password ? "border-destructive" : "border-border focus:border-foreground")} />
               </div>
             </div>

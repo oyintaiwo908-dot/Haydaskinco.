@@ -106,7 +106,7 @@ export default function WholesalePage() {
           {submitted ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-green-50">
-                <Check className="size-6 text-green-600" />
+                <Check className="size-6 text-success" />
               </div>
               <h2 className="mb-2 font-serif text-2xl font-medium">Enquiry received</h2>
               <p className="max-w-xs text-sm font-light leading-relaxed text-muted-foreground">

@@ -137,7 +137,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         setSession(s)
         return null
       }
-      return "Invalid email or password. Try admin@haydaskinco.com / password"
+      return "Invalid email or password."
     }
 
     clearAdminSession()

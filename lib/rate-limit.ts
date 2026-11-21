@@ -59,6 +59,31 @@ export function clientIp(request: Request): string {
   return request.headers.get("x-real-ip")?.trim() || "unknown"
 }
 
+type UpstashLimiter = { limit: (key: string) => Promise<{ success: boolean; reset: number }> }
+const limiters = new Map<string, Promise<UpstashLimiter>>()
+let warnedNoUpstash = false
+
+/** One Ratelimit instance per (limit, window), reused across requests on the same instance. */
+function upstashLimiter(limit: number, windowSec: number): Promise<UpstashLimiter> {
+  const id = `${limit}:${windowSec}`
+  let limiter = limiters.get(id)
+  if (!limiter) {
+    limiter = (async () => {
+      const { Ratelimit } = await import("@upstash/ratelimit")
+      const { Redis } = await import("@upstash/redis")
+      return new Ratelimit({
+        redis: Redis.fromEnv(),
+        limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
+        prefix: "hayda-rl",
+        analytics: false,
+      })
+    })()
+    limiters.set(id, limiter)
+    limiter.catch(() => limiters.delete(id))
+  }
+  return limiter
+}
+
 export async function rateLimit(
   key: string,
   limit: number,
@@ -66,16 +91,8 @@ export async function rateLimit(
 ): Promise<LimitResult> {
   if (upstashConfigured()) {
     try {
-      const { Ratelimit } = await import("@upstash/ratelimit")
-      const { Redis } = await import("@upstash/redis")
-      const redis = Redis.fromEnv()
       const windowSec = Math.max(1, Math.ceil(windowMs / 1000))
-      const limiter = new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
-        prefix: "hayda-rl",
-        analytics: false,
-      })
+      const limiter = await upstashLimiter(limit, windowSec)
       const result = await limiter.limit(key)
       if (result.success) return { ok: true }
       const retryAfterSec = Math.max(
@@ -84,8 +101,14 @@ export async function rateLimit(
       )
       return { ok: false, retryAfterSec }
     } catch (err) {
+      // Fail soft to the per-instance limiter rather than dropping all traffic.
       console.error("[rate-limit] Upstash failed, using memory:", err)
     }
+  } else if (process.env.NODE_ENV === "production" && !warnedNoUpstash) {
+    warnedNoUpstash = true
+    console.warn(
+      "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN not set: limits are per server instance only.",
+    )
   }
   return memoryRateLimit(key, limit, windowMs)
 }

@@ -2,8 +2,15 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { sendWelcome } from "@/lib/email/send"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import {
+  EMAIL_RE,
+  errorResponse,
+  forbiddenOrigin,
+  isSameOriginRequest,
+  jsonError,
+  readJsonObject,
+  stringField,
+} from "@/lib/api-guard"
 
 /**
  * Welcome email after signup.
@@ -11,25 +18,27 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  */
 export async function POST(request: Request) {
   try {
+    if (!isSameOriginRequest(request)) return forbiddenOrigin()
+
     const ip = clientIp(request)
     const limited = await rateLimit(`email-welcome:${ip}`, 5, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = await request.json()
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
-    const name = typeof body.name === "string" ? body.name.trim() : "there"
+    const body = await readJsonObject(request, 2_000)
+    const email = stringField(body, "email", 254, "Email").toLowerCase()
+    const name = stringField(body, "name", 120, "Name") || "there"
 
     if (!EMAIL_RE.test(email)) {
-      return NextResponse.json({ error: "Valid email required." }, { status: 400 })
+      return jsonError("Valid email required.", 400)
     }
 
     const supabase = await createClient("customer")
     if (!supabase) {
       // Local mock / no Supabase — allow only when env is missing (dev without DB)
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-        return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+      if (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NODE_ENV === "production") {
+        return jsonError("Unauthorized.", 401)
       }
-      await sendWelcome({ to: email, name: name || "there" })
+      await sendWelcome({ to: email, name })
       return NextResponse.json({ ok: true })
     }
 
@@ -38,16 +47,16 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (!user?.email || user.email.toLowerCase() !== email) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+      return jsonError("Unauthorized.", 401)
     }
 
-    await sendWelcome({ to: email, name: name || "there" })
+    // One welcome per address per day, however many sessions / IPs ask.
+    const perEmail = await rateLimit(`email-welcome-to:${email}`, 1, 24 * 60 * 60_000)
+    if (!perEmail.ok) return NextResponse.json({ ok: true, skipped: true })
+
+    await sendWelcome({ to: email, name })
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("[email/welcome]", err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Send failed." },
-      { status: 500 },
-    )
+    return errorResponse("email/welcome", err, "Send failed.")
   }
 }

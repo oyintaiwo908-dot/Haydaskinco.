@@ -3,7 +3,7 @@
  * Bucket: product-images (public)
  * Falls back gracefully when Supabase is not configured.
  */
-import { createClient, createAdminBrowserClient } from "@/lib/supabase/client"
+import { createAdminBrowserClient } from "@/lib/supabase/client"
 
 const BUCKET = "product-images"
 
@@ -19,7 +19,9 @@ export async function uploadProductImage(file: File, folder: string): Promise<st
     return URL.createObjectURL(file)
   }
 
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg"
+  // Bucket allowlists image MIME types (004_storage.sql); keep the extension in the same set.
+  const rawExt = file.name.split(".").pop()?.toLowerCase() ?? ""
+  const ext = ["jpg", "jpeg", "png", "webp", "gif", "avif"].includes(rawExt) ? rawExt : "jpg"
   const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
 
   const { error } = await supabase.storage
@@ -30,21 +32,4 @@ export async function uploadProductImage(file: File, folder: string): Promise<st
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
   return data.publicUrl
-}
-
-/**
- * Delete a product image from Supabase Storage by its public URL.
- */
-export async function deleteProductImage(publicUrl: string): Promise<void> {
-  const supabase = createAdminBrowserClient()
-  if (!supabase) return
-
-  // Extract the storage path from the full public URL
-  // e.g. https://xxx.supabase.co/storage/v1/object/public/product-images/abc/123.jpg
-  const marker = `/object/public/${BUCKET}/`
-  const idx = publicUrl.indexOf(marker)
-  if (idx === -1) return
-
-  const path = publicUrl.slice(idx + marker.length)
-  await supabase.storage.from(BUCKET).remove([path])
 }

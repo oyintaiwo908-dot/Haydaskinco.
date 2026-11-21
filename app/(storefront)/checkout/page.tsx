@@ -3,9 +3,14 @@
 import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ChevronRight, Check, Lock, Truck, ArrowLeft, ShieldCheck, Zap, Building2, Smartphone, ShoppingBag, Gift } from "lucide-react"
+import { Check, Lock, Truck, ArrowLeft, ShieldCheck, CreditCard, Building2, Smartphone, ShoppingBag, Gift, ChevronDown, X } from "lucide-react"
 import { useCart } from "@/components/cart-provider"
 import { useUserAuth } from "@/components/user-auth-provider"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Field, Input, Select } from "@/components/ui/field"
+import { Money } from "@/components/ui/price"
+import { MoneyTicker } from "@/components/motion/money-ticker"
+import { BrandLogo } from "@/components/brand-logo"
 import { formatPrice, getUnitPriceForQuantity } from "@/lib/products"
 import { cn } from "@/lib/utils"
 import { getAddresses, getProfile, addAddress, type Address } from "@/lib/supabase/profile"
@@ -42,50 +47,56 @@ function addressToShipping(addr: Address, email: string) {
 
 type Step = "shipping" | "payment" | "review" | "confirmed"
 
-const STEPS: { id: Step; label: string }[] = [
+const STEPS: { id: Exclude<Step, "confirmed">; label: string }[] = [
   { id: "shipping", label: "Shipping" },
   { id: "payment", label: "Payment" },
   { id: "review", label: "Review" },
 ]
 
 function StepIndicator({ current }: { current: Step }) {
-  const ids: Step[] = ["shipping", "payment", "review"]
-  const currentIdx = ids.indexOf(current)
+  const currentIdx = STEPS.findIndex(s => s.id === current)
+  const progress = STEPS.length > 1 ? currentIdx / (STEPS.length - 1) : 1
   return (
-    <div className="flex items-center gap-0">
-      {STEPS.map((step, i) => {
-        const done = i < currentIdx
-        const active = i === currentIdx
-        return (
-          <div key={step.id} className="flex items-center">
-            <div className="flex items-center gap-2">
-              <div
+    <div className="relative">
+      {/* Track and fill: the fill scales (transform only) as the steps advance. */}
+      <span aria-hidden className="absolute left-4 right-4 top-4 h-px bg-navy/15" />
+      <span
+        aria-hidden
+        className="step-fill absolute left-4 right-4 top-4 h-px origin-left bg-navy"
+        style={{ transform: `scaleX(${progress})` }}
+      />
+      <ol className="relative grid grid-cols-3" aria-label="Checkout progress">
+        {STEPS.map((step, i) => {
+          const done = i < currentIdx
+          const active = i === currentIdx
+          return (
+            <li
+              key={step.id}
+              aria-current={active ? "step" : undefined}
+              className={cn("flex flex-col gap-2", i === 0 ? "items-start" : i === STEPS.length - 1 ? "items-end" : "items-center")}
+            >
+              <span
+                aria-hidden
                 className={cn(
-                  "flex size-7 items-center justify-center rounded-full border text-[11px] font-medium transition-all",
-                  done
-                    ? "border-gold bg-gold text-gold-foreground"
-                    : active
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-muted-foreground",
+                  "step-dot flex size-8 items-center justify-center rounded-full border text-xs font-semibold tabular-nums",
+                  active ? "scale-110 border-navy bg-navy text-on-dark" : done ? "border-navy bg-white text-navy" : "border-navy/20 bg-white text-muted-foreground",
                 )}
               >
-                {done ? <Check className="size-3.5" /> : i + 1}
-              </div>
+                {done ? <Check className="size-4" /> : i + 1}
+              </span>
               <span
                 className={cn(
-                  "text-[11px] uppercase tracking-[0.15em]",
-                  active ? "font-medium text-foreground" : done ? "text-gold" : "text-muted-foreground",
+                  "text-xs font-medium uppercase tracking-[0.14em]",
+                  active ? "text-navy-deep" : done ? "text-navy" : "text-muted-foreground",
                 )}
               >
                 {step.label}
+                {done && <span className="sr-only"> (completed)</span>}
               </span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <ChevronRight className="mx-3 size-3.5 text-border" />
-            )}
-          </div>
-        )
-      })}
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }
@@ -117,23 +128,40 @@ type PaymentMethod = "card" | "bank_transfer" | "ussd" | "mobile_money"
 const EXPRESS_SHIPPING_NGN = 3000
 
 const SHIPPING_METHODS = [
-  { id: "standard" as const, label: "Standard Shipping", desc: "5–7 business days", price: 0, priceLabel: "Free" },
+  { id: "standard" as const, label: "Standard shipping", desc: "5–7 business days", price: 0, priceLabel: "Free" },
   {
     id: "express" as const,
-    label: "Express Shipping",
+    label: "Express shipping",
     desc: "2–3 business days",
     price: EXPRESS_SHIPPING_NGN,
     priceLabel: formatPrice(EXPRESS_SHIPPING_NGN),
   },
 ]
 
+/** Server rule (/api/orders): at most one regular promo code plus one `RWD-` rewards code per order. */
+type PromoKind = "promo" | "reward"
+function promoKind(code: string): PromoKind {
+  return code.startsWith("RWD-") ? "reward" : "promo"
+}
+
 export default function CheckoutPage() {
-  const { items, subtotal, stockById, hasStockIssues, refreshAvailability, removeItem, updateQuantity } = useCart()
+  const { items, loading: cartLoading, subtotal, stockById, hasStockIssues, refreshAvailability, removeItem, updateQuantity } = useCart()
   const { session } = useUserAuth()
   const [step, setStep] = useState<Step>("shipping")
   const prefilledRef = useRef(false)
   const [savedAddressCount, setSavedAddressCount] = useState(0)
   const [stockReady, setStockReady] = useState(false)
+  // Each step's h2 takes focus when the step changes (not on first load), so keyboard and
+  // screen-reader users land on the new step instead of <body>.
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null)
+  const stepChanged = useRef(false)
+  useEffect(() => {
+    if (!stepChanged.current) {
+      stepChanged.current = true
+      return
+    }
+    stepHeadingRef.current?.focus()
+  }, [step])
 
   const [shipping, setShipping] = useState<ShippingData>({
     firstName: "", lastName: "", email: "", phone: "",
@@ -143,33 +171,40 @@ export default function CheckoutPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card")
 
-  // Promo codes / rewards (stackable)
+  // Promo code + rewards code (one of each)
   const [promoInput, setPromoInput] = useState("")
   const [appliedPromos, setAppliedPromos] = useState<AppliedPromo[]>([])
+  const appliedRef = useRef<AppliedPromo[]>([])
   const [promoError, setPromoError] = useState("")
-  const [pointsBalance, setPointsBalance] = useState(0)
+  const [loadedPoints, setLoadedPoints] = useState(0)
   const [redeemingReward, setRedeemingReward] = useState<string | null>(null)
-  const [rewardMsg, setRewardMsg] = useState<string | null>(null)
+  const [rewardMsg, setRewardMsg] = useState<React.ReactNode>(null)
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState("")
   const [orderRef, setOrderRef] = useState<string | null>(null)
+  const pointsBalance = session ? loadedPoints : 0
 
-  function addPromo(code: string, discountPct: number, discountNgn: number, label?: string | null) {
+  useEffect(() => {
+    appliedRef.current = appliedPromos
+  }, [appliedPromos])
+
+  /** Adds a code, replacing any applied code of the same kind. Returns the replaced code, if any. */
+  function addPromo(code: string, discountPct: number, discountNgn: number, label?: string | null, kind?: PromoKind) {
     const normalized = code.trim().toUpperCase()
-    setAppliedPromos(prev => {
-      if (prev.some(p => p.code === normalized)) return prev
-      return [
-        ...prev,
-        {
-          code: normalized,
-          discountPct: Number(discountPct) || 0,
-          discountNgn: Number(discountNgn) || 0,
-          label: label ?? (normalized.startsWith("RWD-") ? "Rewards credit" : normalized),
-        },
-      ]
-    })
+    const k = kind ?? promoKind(normalized)
+    const replaced = appliedRef.current.find(p => promoKind(p.code) === k && p.code !== normalized)?.code ?? null
+    const next: AppliedPromo = {
+      code: normalized,
+      discountPct: Number(discountPct) || 0,
+      discountNgn: Number(discountNgn) || 0,
+      label: label ?? (k === "reward" ? "Rewards credit" : normalized),
+    }
+    const list = [...appliedRef.current.filter(p => promoKind(p.code) !== k), next]
+    appliedRef.current = list
+    setAppliedPromos(list)
     setPromoInput("")
     setPromoError("")
+    return replaced
   }
 
   // Live stock check when landing on checkout
@@ -219,12 +254,9 @@ export default function CheckoutPage() {
     return () => { cancelled = true }
   }, [session])
 
-  // Auto-apply unused reward promo + load points balance
+  // Auto-apply an unused reward promo (only if no rewards code is applied yet) + load points
   useEffect(() => {
-    if (!session) {
-      setPointsBalance(0)
-      return
-    }
+    if (!session) return
     let cancelled = false
     ;(async () => {
       const [pending, summary] = await Promise.all([
@@ -232,9 +264,10 @@ export default function CheckoutPage() {
         getRewardsSummary(),
       ])
       if (cancelled) return
-      setPointsBalance(summary?.balance ?? 0)
-      if (pending && pending.discountNgn > 0) {
-        addPromo(pending.code, 0, pending.discountNgn, pending.label)
+      setLoadedPoints(summary?.balance ?? 0)
+      const hasReward = appliedRef.current.some(p => promoKind(p.code) === "reward")
+      if (pending && pending.discountNgn > 0 && !hasReward) {
+        addPromo(pending.code, 0, pending.discountNgn, pending.label, "reward")
         setRewardMsg(`Rewards credit applied: ${pending.label}`)
       }
     })()
@@ -261,13 +294,19 @@ export default function CheckoutPage() {
         setPromoError(data.message ?? "Invalid promo code.")
         return
       }
-      addPromo(
+      const kind: PromoKind = data.kind === "reward" || data.kind === "promo" ? data.kind : promoKind(String(data.code))
+      const replaced = addPromo(
         data.code,
         Number(data.discount_pct || 0),
         Number(data.discount_ngn || 0),
-        data.code?.startsWith("RWD-") ? "Rewards credit" : data.code,
+        kind === "reward" ? "Rewards credit" : data.code,
+        kind,
       )
-      setRewardMsg(null)
+      setRewardMsg(
+        replaced
+          ? `${String(data.code).toUpperCase()} replaced ${replaced}. One ${kind === "reward" ? "rewards" : "promo"} code applies per order.`
+          : null,
+      )
     } catch {
       setPromoError("Could not validate promo code.")
     }
@@ -284,17 +323,24 @@ export default function CheckoutPage() {
     const res = await redeemReward(rewardId)
     setRedeemingReward(null)
     if (res.ok && res.promoCode) {
-      addPromo(res.promoCode, 0, res.discountNgn ?? 0, "Rewards credit")
-      setRewardMsg(`Redeemed! ₦${(res.discountNgn ?? 0).toLocaleString()} off added to this order.`)
+      const replaced = addPromo(res.promoCode, 0, res.discountNgn ?? 0, "Rewards credit", "reward")
+      setRewardMsg(
+        <>
+          Redeemed: <Money amount={res.discountNgn ?? 0} /> off added to this order.
+          {replaced ? " It replaces your previous rewards code." : ""}
+        </>,
+      )
       const summary = await getRewardsSummary()
-      setPointsBalance(summary?.balance ?? 0)
+      setLoadedPoints(summary?.balance ?? 0)
     } else {
       setRewardMsg(res.message ?? "Could not redeem reward.")
     }
   }
 
   function removePromo(code: string) {
-    setAppliedPromos(prev => prev.filter(p => p.code !== code))
+    const list = appliedRef.current.filter(p => p.code !== code)
+    appliedRef.current = list
+    setAppliedPromos(list)
     setRewardMsg(null)
   }
 
@@ -373,6 +419,7 @@ export default function CheckoutPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        // Server messages (stock, promo stacking, validation) are written for shoppers.
         setPayError(data.error ?? "Could not start checkout.")
         setPaying(false)
         return
@@ -394,79 +441,121 @@ export default function CheckoutPage() {
   if (step === "confirmed") {
     return (
       <div className="flex min-h-[80vh] flex-col items-center justify-center px-5 text-center">
-        <div className="flex size-16 items-center justify-center rounded-full bg-lavender mb-6">
-          <Check className="size-8 text-gold" />
-        </div>
-        <p className="text-[11px] font-light uppercase tracking-[0.25em] text-gold mb-3">Order Confirmed</p>
-        <h1 className="font-serif text-4xl font-medium text-foreground mb-4">Thank you for your order</h1>
-        <p className="max-w-md text-sm font-light text-muted-foreground leading-relaxed mb-2">
-          Your HAYDA SKINCo. order is on its way. A confirmation email has been sent to{" "}
-          <span className="font-medium text-foreground">{shipping.email}</span>.
+        <span className="mb-6 flex size-16 items-center justify-center rounded-full bg-secondary text-navy">
+          <Check aria-hidden className="size-8" />
+        </span>
+        <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-rose">Order confirmed</p>
+        <h1 className="mb-4 font-serif text-4xl text-navy-deep">Thank you for your order</h1>
+        <p className="mb-2 max-w-md text-muted-foreground">
+          A confirmation email has been sent to <span className="font-medium text-foreground">{shipping.email}</span>.
         </p>
-        <p className="mb-8 text-[11px] font-light uppercase tracking-[0.18em] text-muted-foreground">
-          Order #{orderRef ?? "—"}
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Link
-            href="/shop"
-            className="border border-foreground px-8 py-3 text-xs font-medium uppercase tracking-[0.18em] transition-colors hover:bg-foreground hover:text-background"
-          >
-            Continue Shopping
-          </Link>
-          <Link
-            href="/"
-            className="bg-gold px-8 py-3 text-xs font-medium uppercase tracking-[0.18em] text-gold-foreground transition-opacity hover:opacity-80"
-          >
-            Return Home
-          </Link>
+        <p className="mb-8 text-xs uppercase tracking-[0.16em] text-muted-foreground">Order #{orderRef ?? "—"}</p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link href="/shop" className={buttonVariants({ variant: "outline" })}>Continue shopping</Link>
+          <Link href="/" className={buttonVariants()}>Return home</Link>
         </div>
       </div>
+    )
+  }
+
+  const header = (
+    <header className="border-b border-border">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
+        {/* Same wordmark as the storefront header. */}
+        <Link href="/" aria-label="HAYDA SKINCo. home" className="inline-flex whitespace-nowrap">
+          <BrandLogo className="h-8 sm:h-9" priority />
+        </Link>
+        <p className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+          <Lock aria-hidden className="size-3.5" /> Secure checkout<span className="hidden sm:inline">&nbsp;with Paystack</span>
+        </p>
+      </div>
+      <noscript>
+        <p className="border-t border-border bg-secondary px-5 py-3 text-center text-sm text-navy-deep">
+          Checkout needs JavaScript to load your cart and pay securely with Paystack. Please enable it, or order on WhatsApp.
+        </p>
+      </noscript>
+    </header>
+  )
+
+  if (cartLoading) {
+    return (
+      <>
+        {header}
+        <div role="status" className="mx-auto max-w-6xl px-5 py-10 md:px-8">
+          <span className="sr-only">Loading your cart</span>
+          <div aria-hidden className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_400px]">
+            <div className="space-y-5">
+              <div className="h-8 w-48 animate-pulse bg-muted/50" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-12 animate-pulse bg-muted/50" />
+              ))}
+            </div>
+            <div className="hidden h-72 animate-pulse bg-porcelain lg:block" />
+          </div>
+        </div>
+      </>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 px-5 text-center">
-        <p className="font-serif text-2xl font-medium">Your cart is empty</p>
-        <p className="text-sm font-light text-muted-foreground">Add items to your cart before checking out.</p>
-        <Link href="/shop" className="bg-foreground px-8 py-3 text-xs font-medium uppercase tracking-[0.18em] text-background">
-          Shop Now
-        </Link>
-      </div>
+      <>
+        {header}
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 px-5 text-center">
+          <span className="flex size-16 items-center justify-center rounded-full bg-porcelain text-navy">
+            <ShoppingBag aria-hidden className="size-7" strokeWidth={1.5} />
+          </span>
+          <h1 className="font-serif text-3xl text-navy-deep">Your cart is empty</h1>
+          <p className="text-muted-foreground">Add items to your cart before checking out.</p>
+          <Link href="/shop" className={buttonVariants()}>Shop now</Link>
+        </div>
+      </>
     )
+  }
+
+  const summaryProps = {
+    items, subtotal, discount, appliedPromos, promoInput, setPromoInput, applyPromo, removePromo,
+    promoError, rewardMsg, shippingCost, tax, total,
+    signedIn: Boolean(session), pointsBalance, redeemingReward, onRedeemReward: handleRedeemReward,
+    stockById, hasStockIssues, onRemoveItem: removeItem, onUpdateQuantity: updateQuantity,
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 md:px-8">
-          <Link href="/" className="font-serif text-xl font-medium tracking-[0.15em]">
-            HAYDA <span className="text-gold">SKINCo.</span>
+      {header}
+
+      <div className="mx-auto max-w-6xl px-5 py-6 md:px-8 md:py-10">
+        <h1 className="sr-only">Checkout</h1>
+        <div className="mb-6">
+          <Link href="/shop" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-navy">
+            <ArrowLeft aria-hidden className="size-4" /> Back to shop
           </Link>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Lock className="size-3" /> Pay securely with Paystack
+        </div>
+
+        {/* Phones: collapsible summary above the form */}
+        <details className="disclosure group mb-6 border-y border-border lg:hidden">
+          <summary className="flex min-h-14 cursor-pointer items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-sm font-medium text-navy">
+              <ShoppingBag aria-hidden className="size-4" />
+              <span className="group-open:hidden">Show order summary</span>
+              <span className="hidden group-open:inline">Hide order summary</span>
+              <ChevronDown aria-hidden className="size-4 transition-transform group-open:rotate-180" />
+            </span>
+            <span className="font-medium tabular-nums"><Money amount={total} /></span>
+          </summary>
+          <div className="pb-5">
+            <OrderSummary {...summaryProps} idPrefix="m" bare />
           </div>
-        </div>
-      </div>
+        </details>
 
-      <div className="mx-auto max-w-6xl px-5 py-8 md:px-8 md:py-12">
-        {/* Breadcrumb / Steps */}
-        <div className="mb-8 flex items-center justify-between">
-          <Link
-            href="/shop"
-            className="flex items-center gap-1.5 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> Back to shop
-          </Link>
-          <StepIndicator current={step} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_380px]">
-          {/* Left: Form */}
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div>
+            <div className="mb-8 max-w-md">
+              <StepIndicator current={step} />
+            </div>
             {step === "shipping" && (
               <ShippingForm
+                headingRef={stepHeadingRef}
                 data={shipping}
                 onChange={setShipping}
                 onNext={() => {
@@ -474,11 +563,14 @@ export default function CheckoutPage() {
                   setStep("payment")
                 }}
                 hasSavedAddress={savedAddressCount > 0}
-                stockBlocked={hasStockIssues || !stockReady}
+                stockBlocked={hasStockIssues}
+                stockChecking={!stockReady}
+                payError={payError}
               />
             )}
             {step === "payment" && (
               <PaystackPaymentStep
+                headingRef={stepHeadingRef}
                 method={paymentMethod}
                 onMethodChange={setPaymentMethod}
                 total={total}
@@ -489,6 +581,7 @@ export default function CheckoutPage() {
             )}
             {step === "review" && (
               <ReviewStep
+                headingRef={stepHeadingRef}
                 shipping={shipping}
                 paymentMethod={paymentMethod}
                 shippingCost={shippingCost}
@@ -500,164 +593,161 @@ export default function CheckoutPage() {
                 paying={paying}
                 payError={payError}
                 onBack={() => setStep("payment")}
+                onEditShipping={() => setStep("shipping")}
                 onConfirm={handleConfirm}
               />
             )}
           </div>
 
-          {/* Right: Order summary */}
-          <OrderSummary
-            items={items}
-            subtotal={subtotal}
-            discount={discount}
-            appliedPromos={appliedPromos}
-            promoInput={promoInput}
-            setPromoInput={setPromoInput}
-            applyPromo={applyPromo}
-            removePromo={removePromo}
-            promoError={promoError}
-            rewardMsg={rewardMsg}
-            shippingCost={shippingCost}
-            tax={tax}
-            total={total}
-            signedIn={Boolean(session)}
-            pointsBalance={pointsBalance}
-            redeemingReward={redeemingReward}
-            onRedeemReward={handleRedeemReward}
-            stockById={stockById}
-            hasStockIssues={hasStockIssues}
-            onRemoveItem={removeItem}
-            onUpdateQuantity={updateQuantity}
-          />
+          <div className="hidden lg:block">
+            <OrderSummary {...summaryProps} idPrefix="d" />
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Primary step action: pinned to the bottom of the screen on phones. */
+function StepActions({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="sticky bottom-0 z-10 -mx-5 mt-8 flex gap-3 border-t border-border bg-background/90 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+      {children}
     </div>
   )
 }
 
 /* ─── Shipping Form ────────────────────────────────────────── */
 function ShippingForm({
-  data, onChange, onNext, hasSavedAddress, stockBlocked,
+  data, onChange, onNext, hasSavedAddress, stockBlocked, stockChecking, payError, headingRef,
 }: {
+  headingRef: React.RefObject<HTMLHeadingElement | null>
+  stockChecking?: boolean
   data: ShippingData
   onChange: (d: ShippingData) => void
   onNext: () => void
   hasSavedAddress?: boolean
   stockBlocked?: boolean
+  payError?: string
 }) {
   const set = (key: keyof ShippingData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...data, [key]: e.target.value })
 
   return (
-    <div>
-      <h2 className="font-serif text-2xl font-medium mb-2">Shipping Information</h2>
-      {hasSavedAddress ? (
-        <p className="mb-6 text-sm font-light text-muted-foreground">
-          Prefilling from your default saved address. You can edit any field before continuing.
+    <form
+      className="step-panel"
+      onSubmit={e => {
+        e.preventDefault()
+        onNext()
+      }}
+    >
+      <h2 ref={headingRef} tabIndex={-1} className="font-serif text-3xl text-navy-deep outline-none">Shipping</h2>
+      {hasSavedAddress && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Prefilled from your default saved address. You can edit any field before continuing.
         </p>
-      ) : (
-        <div className="mb-6" />
+      )}
+      {payError && (
+        <p role="alert" className="mt-5 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{payError}</p>
       )}
       {stockBlocked && (
-        <p className="mb-5 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-light text-destructive">
+        <p role="status" className="mt-5 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           One or more items in your cart are out of stock or exceed available quantity. Fix them in the order summary before continuing.
         </p>
       )}
-      <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="First Name" value={data.firstName} onChange={set("firstName")} required />
-          <FormField label="Last Name" value={data.lastName} onChange={set("lastName")} required />
-        </div>
-        <FormField label="Email Address" type="email" value={data.email} onChange={set("email")} required />
-        <FormField label="Phone Number" type="tel" value={data.phone} onChange={set("phone")} />
-        <FormField label="Address" value={data.address} onChange={set("address")} required />
-        <FormField label="Apartment, suite, etc. (optional)" value={data.apartment} onChange={set("apartment")} />
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="City" value={data.city} onChange={set("city")} required />
-          <FormField label="State / Province" value={data.state} onChange={set("state")} required />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="ZIP / Postal Code" value={data.zip} onChange={set("zip")} required />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">Country</label>
-            <select
-              value={data.country}
-              onChange={set("country")}
-              className="border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors"
-            >
-              {["Nigeria", "United States", "United Kingdom", "Canada", "Australia", "France", "Germany"].map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+      <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field label="First name" required>
+          <Input autoComplete="given-name" value={data.firstName} onChange={set("firstName")} />
+        </Field>
+        <Field label="Last name" required>
+          <Input autoComplete="family-name" value={data.lastName} onChange={set("lastName")} />
+        </Field>
+        <Field label="Email" required hint="For your order confirmation." className="sm:col-span-2">
+          <Input type="email" autoComplete="email" inputMode="email" value={data.email} onChange={set("email")} />
+        </Field>
+        <Field label="Phone" hint="The courier may call to arrange delivery." className="sm:col-span-2">
+          <Input type="tel" autoComplete="tel" inputMode="tel" value={data.phone} onChange={set("phone")} />
+        </Field>
+        <Field label="Address" required className="sm:col-span-2">
+          <Input autoComplete="address-line1" value={data.address} onChange={set("address")} />
+        </Field>
+        <Field label="Apartment, suite, etc. (optional)" className="sm:col-span-2">
+          <Input autoComplete="address-line2" value={data.apartment} onChange={set("apartment")} />
+        </Field>
+        <Field label="City" required>
+          <Input autoComplete="address-level2" value={data.city} onChange={set("city")} />
+        </Field>
+        <Field label="State" required>
+          <Input autoComplete="address-level1" value={data.state} onChange={set("state")} />
+        </Field>
+        <Field label="Postal code (optional)">
+          <Input autoComplete="postal-code" inputMode="numeric" value={data.zip} onChange={set("zip")} />
+        </Field>
+        <Field label="Country">
+          <Select autoComplete="country-name" value={data.country} onChange={set("country")}>
+            {["Nigeria", "United States", "United Kingdom", "Canada", "Australia", "France", "Germany"].map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
 
-        {/* Shipping method */}
-        <div>
-          <p className="mb-3 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-            Shipping Method
-          </p>
-          <div className="space-y-2">
-            {SHIPPING_METHODS.map((method) => (
+      <fieldset className="mt-8">
+        <legend className="mb-3 text-xs font-medium uppercase tracking-[0.14em]">Delivery</legend>
+        <div className="space-y-2">
+          {SHIPPING_METHODS.map((method) => {
+            const checked = data.shippingMethod === method.id
+            return (
               <label
                 key={method.id}
                 className={cn(
-                  "flex cursor-pointer items-center justify-between border p-4 transition-colors",
-                  data.shippingMethod === method.id
-                    ? "border-foreground bg-secondary"
-                    : "border-border hover:border-foreground/50",
+                  "flex min-h-16 cursor-pointer items-center justify-between gap-4 rounded-control border p-4 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
+                  checked ? "border-navy bg-secondary" : "border-input hover:border-navy",
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "size-4 rounded-full border-2 transition-all",
-                      data.shippingMethod === method.id
-                        ? "border-gold bg-gold"
-                        : "border-border",
-                    )}
+                <span className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="shippingMethod"
+                    value={method.id}
+                    checked={checked}
+                    onChange={() => onChange({ ...data, shippingMethod: method.id })}
+                    className="size-4 accent-navy"
+                    data-focus="custom"
                   />
-                  <div>
-                    <p className="text-sm font-medium">{method.label}</p>
-                    <p className="text-xs font-light text-muted-foreground">{method.desc}</p>
-                  </div>
-                </div>
-                <p className="text-sm font-medium">{method.priceLabel}</p>
-                <input
-                  type="radio"
-                  className="sr-only"
-                  checked={data.shippingMethod === method.id}
-                  onChange={() => onChange({ ...data, shippingMethod: method.id })}
-                />
+                  <span>
+                    <span className="block text-sm font-medium">{method.label}</span>
+                    <span className="block text-sm text-muted-foreground">{method.desc}</span>
+                  </span>
+                </span>
+                <span className="text-sm font-medium tabular-nums">{method.price > 0 ? <Money amount={method.price} /> : method.priceLabel}</span>
               </label>
-            ))}
-          </div>
+            )
+          })}
         </div>
+      </fieldset>
 
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={stockBlocked}
-          className="mt-4 w-full bg-foreground py-4 text-xs font-medium uppercase tracking-[0.18em] text-background transition-colors hover:bg-gold hover:text-gold-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
-        >
-          {stockBlocked ? "Resolve stock issues to continue" : "Continue to Payment"}
-        </button>
-      </div>
-    </div>
+      <StepActions>
+        <Button type="submit" block size="lg" disabled={stockBlocked || stockChecking}>
+          {stockChecking ? "Checking stock…" : stockBlocked ? "Fix stock issues to continue" : "Continue to payment"}
+        </Button>
+      </StepActions>
+    </form>
   )
 }
 
 /* ─── Paystack Payment Step ────────────────────────────────── */
 const PAYMENT_METHODS: { id: PaymentMethod; label: string; desc: string; icon: React.ElementType }[] = [
-  { id: "card", label: "Debit / Credit Card", desc: "Visa, Mastercard, Verve", icon: Zap },
-  { id: "bank_transfer", label: "Bank Transfer", desc: "Pay directly from your bank", icon: Building2 },
-  { id: "ussd", label: "USSD", desc: "Pay via mobile USSD code", icon: Smartphone },
-  { id: "mobile_money", label: "Mobile Money", desc: "MTN, Airtel, Glo Money", icon: Smartphone },
+  { id: "card", label: "Debit or credit card", desc: "Visa, Mastercard, Verve", icon: CreditCard },
+  { id: "bank_transfer", label: "Bank transfer", desc: "Pay directly from your bank", icon: Building2 },
+  { id: "ussd", label: "USSD", desc: "Pay with a USSD code", icon: Smartphone },
+  { id: "mobile_money", label: "Mobile money", desc: "MTN, Airtel, Glo", icon: Smartphone },
 ]
 
 function PaystackPaymentStep({
-  method, onMethodChange, total, email, onBack, onNext,
+  method, onMethodChange, total, email, onBack, onNext, headingRef,
 }: {
+  headingRef: React.RefObject<HTMLHeadingElement | null>
   method: PaymentMethod
   onMethodChange: (m: PaymentMethod) => void
   total: number
@@ -666,114 +756,85 @@ function PaystackPaymentStep({
   onNext: () => void
 }) {
   return (
-    <div>
-      <h2 className="font-serif text-2xl font-medium mb-2">Payment</h2>
-      <p className="mb-6 text-sm font-light text-muted-foreground flex items-center gap-1.5">
-        <Lock className="size-3.5" /> Your payment is processed securely by Paystack.
+    <div className="step-panel">
+      <h2 ref={headingRef} tabIndex={-1} className="font-serif text-3xl text-navy-deep outline-none">Payment</h2>
+      <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Lock aria-hidden className="size-4" /> Payments are processed securely by Paystack.
       </p>
 
-      {/* Paystack brand banner */}
-      <div className="mb-6 border border-border bg-secondary p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            {/* Paystack wordmark (text-based since no asset) */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex size-7 items-center justify-center rounded-full bg-[#00C3F7]">
-                <span className="text-[11px] font-bold text-white">P</span>
-              </div>
-              <span className="text-sm font-semibold tracking-tight">Paystack</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="size-4 text-green-600" />
-            <span className="text-[10px] font-light text-green-700 uppercase tracking-[0.12em]">Secured</span>
-          </div>
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-4 bg-porcelain p-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Amount to pay</p>
+          <p className="mt-1 font-serif text-3xl text-navy-deep tabular-nums"><Money amount={total} /></p>
         </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-light uppercase tracking-[0.18em] text-muted-foreground">Amount to pay</p>
-            <p className="mt-0.5 font-serif text-2xl font-medium">{formatPrice(total)}</p>
+        {email && (
+          <div className="text-right">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Paying as</p>
+            <p className="mt-1 text-sm font-medium">{email}</p>
           </div>
-          {email && (
-            <div className="text-right">
-              <p className="text-[10px] font-light uppercase tracking-[0.18em] text-muted-foreground">Paying as</p>
-              <p className="mt-0.5 text-sm font-medium">{email}</p>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Payment method selector */}
-      <div className="mb-6">
-        <p className="mb-3 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-          Pay with Paystack
-        </p>
+      <fieldset className="mt-6">
+        <legend className="mb-3 text-xs font-medium uppercase tracking-[0.14em]">Pay with</legend>
         <div className="space-y-2">
-          {PAYMENT_METHODS.map((m) => (
-            <label
-              key={m.id}
-              onClick={() => onMethodChange(m.id)}
-              className={cn(
-                "flex cursor-pointer items-center gap-4 border p-4 transition-colors",
-                method === m.id
-                  ? "border-foreground bg-secondary"
-                  : "border-border hover:border-foreground/40",
-              )}
-            >
-              <div className={cn(
-                "size-4 rounded-full border-2 transition-all shrink-0",
-                method === m.id ? "border-gold bg-gold" : "border-border",
-              )} />
-              <div className="flex-1">
-                <p className="text-sm font-medium">{m.label}</p>
-                <p className="text-xs font-light text-muted-foreground">{m.desc}</p>
-              </div>
-              <m.icon className="size-4 text-muted-foreground shrink-0" />
-            </label>
-          ))}
+          {PAYMENT_METHODS.map((m) => {
+            const checked = method === m.id
+            return (
+              <label
+                key={m.id}
+                className={cn(
+                  "flex min-h-16 cursor-pointer items-center gap-4 rounded-control border p-4 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
+                  checked ? "border-navy bg-secondary" : "border-input hover:border-navy",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  value={m.id}
+                  checked={checked}
+                  onChange={() => onMethodChange(m.id)}
+                  className="size-4 accent-navy"
+                  data-focus="custom"
+                />
+                <span className="flex-1">
+                  <span className="block text-sm font-medium">{m.label}</span>
+                  <span className="block text-sm text-muted-foreground">{m.desc}</span>
+                </span>
+                <m.icon aria-hidden className="size-5 shrink-0 text-navy" strokeWidth={1.5} />
+              </label>
+            )
+          })}
         </div>
-      </div>
+      </fieldset>
 
-      {/* Info note */}
-      <div className="mb-6 flex items-start gap-3 border border-border/60 bg-secondary p-4 text-xs font-light text-muted-foreground">
-        <Lock className="size-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-        <p>
-          You will be redirected to a secure Paystack checkout page to complete your payment.
-          Your financial details are never stored on our servers.
-        </p>
-      </div>
+      <p className="mt-6 flex items-start gap-3 text-sm text-muted-foreground">
+        <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-navy" />
+        You will be redirected to Paystack&apos;s secure page to complete payment. Your card details are never stored on our servers.
+      </p>
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 border border-border px-6 py-4 text-xs font-medium uppercase tracking-[0.15em] transition-colors hover:border-foreground"
-        >
-          <ArrowLeft className="size-3.5" /> Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="flex-1 bg-foreground py-4 text-xs font-medium uppercase tracking-[0.18em] text-background transition-colors hover:bg-gold hover:text-gold-foreground"
-        >
-          Review Order
-        </button>
-      </div>
+      <StepActions>
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft aria-hidden /> Back
+        </Button>
+        <Button onClick={onNext} className="flex-1">Review order</Button>
+      </StepActions>
     </div>
   )
 }
 
 /* ─── Review Step ──────────────────────────────────────────── */
 const METHOD_LABELS: Record<PaymentMethod, string> = {
-  card: "Debit / Credit Card",
-  bank_transfer: "Bank Transfer",
+  card: "Debit or credit card",
+  bank_transfer: "Bank transfer",
   ussd: "USSD",
-  mobile_money: "Mobile Money",
+  mobile_money: "Mobile money",
 }
 
 function ReviewStep({
-  shipping, paymentMethod, shippingCost, tax, discount, appliedPromos, subtotal, total, paying, payError, onBack, onConfirm,
+  shipping, paymentMethod, shippingCost, tax, discount, appliedPromos, subtotal, total, paying, payError, onBack, onEditShipping, onConfirm, headingRef,
 }: {
+  headingRef: React.RefObject<HTMLHeadingElement | null>
   shipping: ShippingData
   paymentMethod: PaymentMethod
   shippingCost: number
@@ -785,124 +846,92 @@ function ReviewStep({
   paying: boolean
   payError: string
   onBack: () => void
+  onEditShipping: () => void
   onConfirm: () => void
 }) {
   return (
-    <div>
-      <h2 className="font-serif text-2xl font-medium mb-6">Review Order</h2>
+    <div className="step-panel">
+      <h2 ref={headingRef} tabIndex={-1} className="font-serif text-3xl text-navy-deep outline-none">Review your order</h2>
 
-      <div className="space-y-5">
-        {/* Shipping summary */}
-        <div className="border border-border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Truck className="size-4 text-muted-foreground" />
-              <span className="text-xs font-medium uppercase tracking-[0.15em]">Shipping</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onBack()}
-              className="text-[11px] font-light uppercase tracking-[0.15em] text-gold underline-offset-2 hover:underline"
-            >
-              Edit
+      <div className="mt-6 space-y-4">
+        <section className="border border-border p-5" aria-labelledby="review-ship">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 id="review-ship" className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em]">
+              <Truck aria-hidden className="size-4 text-navy" /> Shipping
+            </h3>
+            <button type="button" onClick={onEditShipping} className="min-h-11 px-2 text-sm text-navy underline underline-offset-4">
+              Edit<span className="sr-only"> shipping details</span>
             </button>
           </div>
-          <p className="text-sm font-light">
-            {shipping.firstName} {shipping.lastName}
-          </p>
-          <p className="text-sm font-light text-muted-foreground">
+          <p>{shipping.firstName} {shipping.lastName}</p>
+          <p className="text-muted-foreground">
             {shipping.address}{shipping.apartment && `, ${shipping.apartment}`}, {shipping.city}, {shipping.state} {shipping.zip}
           </p>
-          <p className="text-sm font-light text-muted-foreground">{shipping.country}</p>
-          <p className="mt-2 text-xs font-light text-muted-foreground">
-            {shipping.shippingMethod === "express"
-              ? "Express Shipping · 2–3 business days"
-              : "Standard Shipping · Free · 5–7 business days"}
+          <p className="text-muted-foreground">{shipping.country}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {shipping.shippingMethod === "express" ? "Express shipping · 2–3 business days" : "Standard shipping · Free · 5–7 business days"}
           </p>
-        </div>
+        </section>
 
-        {/* Payment summary — Paystack */}
-        <div className="border border-border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex size-5 items-center justify-center rounded-full bg-[#00C3F7]">
-                <span className="text-[9px] font-bold text-white">P</span>
-              </div>
-              <span className="text-xs font-medium uppercase tracking-[0.15em]">Payment via Paystack</span>
-            </div>
-          </div>
-          <p className="text-sm font-light">{METHOD_LABELS[paymentMethod]}</p>
-          <p className="mt-1 text-xs font-light text-muted-foreground">
-            You will be redirected to Paystack to complete this payment securely.
-          </p>
-        </div>
+        <section className="border border-border p-5" aria-labelledby="review-pay">
+          <h3 id="review-pay" className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em]">
+            <Lock aria-hidden className="size-4 text-navy" /> Payment via Paystack
+          </h3>
+          <p>{METHOD_LABELS[paymentMethod]}</p>
+          <p className="mt-1 text-sm text-muted-foreground">You will be redirected to Paystack to complete this payment securely.</p>
+        </section>
 
-        {/* Totals */}
-        <div className="border border-border p-5 space-y-2.5">
-          <LineItem label="Subtotal" value={formatPrice(subtotal)} />
+        <section className="space-y-2.5 border border-border p-5" aria-label="Order total">
+          <LineItem label="Subtotal" value={<Money amount={subtotal} />} />
           {discount > 0 && (
             <LineItem
               label={
                 appliedPromos.length === 1
-                  ? (appliedPromos[0].code.startsWith("RWD-") ? "Rewards discount" : `Promo (${appliedPromos[0].code})`)
+                  ? (promoKind(appliedPromos[0].code) === "reward" ? "Rewards discount" : `Promo (${appliedPromos[0].code})`)
                   : `Discounts (${appliedPromos.map(p => p.code).join(", ")})`
               }
-              value={`-${formatPrice(discount)}`}
-              className="text-green-700"
+              value={<>−<Money amount={discount} /></>}
+              className="text-success"
             />
           )}
-          <LineItem label={shippingCost === 0 ? "Standard Shipping" : "Express Shipping"} value={shippingCost === 0 ? "Free" : formatPrice(shippingCost)} />
-          <p className="-mt-1 text-[11px] font-light text-muted-foreground">
-            {shippingCost === 0 ? "5–7 business days" : "2–3 business days"}
-          </p>
-          <LineItem label="Estimated Tax" value={formatPrice(tax)} />
+          <LineItem label={shippingCost === 0 ? "Standard shipping" : "Express shipping"} value={shippingCost === 0 ? "Free" : <Money amount={shippingCost} />} />
+          <LineItem label="VAT (7.5%)" value={<Money amount={tax} />} />
           <div className="border-t border-border pt-2.5">
-            <LineItem label="Total" value={formatPrice(total)} bold />
+            <LineItem label="Total" value={<Money amount={total} />} bold />
           </div>
-        </div>
+        </section>
 
         {payError && (
-          <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 px-4 py-2.5">
-            {payError}
-          </p>
+          <p role="alert" className="border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{payError}</p>
         )}
-
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            disabled={paying}
-            className="flex items-center gap-2 border border-border px-6 py-4 text-xs font-medium uppercase tracking-[0.15em] transition-colors hover:border-foreground disabled:opacity-40"
-          >
-            <ArrowLeft className="size-3.5" /> Back
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={paying}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#00C3F7] py-4 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {paying ? (
-              <>
-                <span className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                Redirecting…
-              </>
-            ) : (
-              <><Lock className="size-3.5" /> Pay with Paystack</>
-            )}
-          </button>
-        </div>
       </div>
+
+      <StepActions>
+        <Button variant="outline" onClick={onBack} disabled={paying}>
+          <ArrowLeft aria-hidden /> Back
+        </Button>
+        <Button onClick={onConfirm} disabled={paying} className="flex-1" aria-busy={paying}>
+          {paying ? (
+            <>
+              <span aria-hidden className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              Redirecting to Paystack…
+            </>
+          ) : (
+            <><Lock aria-hidden /> Pay <Money amount={total} /></>
+          )}
+        </Button>
+      </StepActions>
     </div>
   )
 }
 
-/* ─── Order Summary Sidebar ─────────────────────────────────── */
+/* ─── Order Summary ─────────────────────────────────────────── */
 function OrderSummary({
   items, subtotal, discount, appliedPromos, promoInput, setPromoInput, applyPromo, removePromo,
   promoError, rewardMsg, shippingCost, tax, total,
   signedIn, pointsBalance, redeemingReward, onRedeemReward,
   stockById, hasStockIssues, onRemoveItem, onUpdateQuantity,
+  idPrefix, bare = false,
 }: {
   items: ReturnType<typeof useCart>["items"]
   subtotal: number
@@ -913,7 +942,7 @@ function OrderSummary({
   applyPromo: () => void | Promise<void>
   removePromo: (code: string) => void
   promoError: string
-  rewardMsg: string | null
+  rewardMsg: React.ReactNode
   shippingCost: number
   tax: number
   total: number
@@ -925,164 +954,170 @@ function OrderSummary({
   hasStockIssues: boolean
   onRemoveItem: (id: string) => void
   onUpdateQuantity: (id: string, quantity: number) => void
+  /** Keeps ids unique: the summary renders twice (phone disclosure and desktop column). */
+  idPrefix: string
+  bare?: boolean
 }) {
   const redeemable = REWARD_CATALOG.filter(r => pointsBalance >= r.cost)
+  const promoId = `${idPrefix}-promo`
 
   return (
-    <aside className="lg:sticky lg:top-24 h-fit">
-      <div className="border border-border p-6">
-        <h3 className="mb-5 text-xs font-medium uppercase tracking-[0.2em]">Order Summary</h3>
+    <aside aria-label="Order summary" className={cn(!bare && "lg:sticky lg:top-8")}>
+      <div className={cn(!bare && "receipt relative bg-white px-6 pb-8 pt-7 shadow-float")}>
+        {!bare && (
+          <div className="mb-5 border-b border-dashed border-navy/25 pb-4">
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">HAYDA SKINCo. · Order</p>
+            <h2 className="mt-1 font-serif text-3xl text-navy-deep">Order summary</h2>
+          </div>
+        )}
         {hasStockIssues && (
-          <p className="mb-4 border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] font-light text-destructive">
-            Some items are unavailable or limited. Remove out-of-stock items or reduce quantities to continue.
+          <p className="mb-4 border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            Some items are unavailable or limited. Remove them or reduce quantities to continue.
           </p>
         )}
-        <ul className="divide-y divide-border mb-5">
+        <ul className="mb-5 divide-y divide-border">
           {items.map((item) => {
             const stock = stockById[item.id]
             const unavailable = Boolean(stock?.unavailable)
             return (
-            <li key={item.id} className={cn("flex gap-3 py-3.5", unavailable && "opacity-70")}>
-              <div className="relative size-16 shrink-0 overflow-hidden border border-border bg-muted">
-                {item.image && item.image !== "/product-bundle.png" ? (
-                  <Image src={item.image} alt={item.name} fill sizes="64px" className="object-cover" />
-                ) : (
-                  <div className="flex size-full items-center justify-center bg-lavender">
-                    <ShoppingBag className="size-7 text-gold/60" />
-                  </div>
-                )}
-
-                <span className="absolute right-1.5 top-1 flex size-4 items-center justify-center rounded-full bg-foreground text-[9px] text-background">
-                  {item.quantity}
-                </span>
-              </div>
-              <div className="flex flex-1 flex-col justify-center min-w-0">
-                <p className="text-[10px] font-light uppercase tracking-[0.18em] text-gold">
-                  {item.id.startsWith("deal__") ? "Bundle Deal" : item.category}
-                </p>
-                <p className="text-xs font-medium leading-snug">{item.name}</p>
-                {unavailable ? (
-                  <p className="mt-1 text-[11px] font-medium text-destructive">Out of stock</p>
-                ) : stock && stock.available <= 10 ? (
-                  <p className="mt-1 text-[11px] font-light text-amber-600">Only {stock.available} left</p>
-                ) : !item.id.startsWith("deal__") ? (
-                  <p className="text-xs font-light text-muted-foreground">{item.tagline}</p>
-                ) : null}
-                {unavailable && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveItem(item.id)}
-                    className="mt-1 self-start text-[10px] font-medium uppercase tracking-[0.12em] text-destructive hover:underline"
-                  >
-                    Remove
-                  </button>
-                )}
-                {!unavailable && !item.id.startsWith("deal__") && stock && item.quantity > stock.available && (
-                  <button
-                    type="button"
-                    onClick={() => onUpdateQuantity(item.id, stock.available)}
-                    className="mt-1 self-start text-[10px] font-medium uppercase tracking-[0.12em] text-amber-700 hover:underline"
-                  >
-                    Reduce to {stock.available}
-                  </button>
-                )}
-              </div>
-              <p className="text-xs font-medium self-center">
-                {unavailable
-                  ? "—"
-                  : formatPrice(
-                      getUnitPriceForQuantity(
-                        {
-                          price: item.listPrice ?? item.price,
-                          listPrice: item.listPrice ?? item.price,
-                          skuPrice: item.skuPrice ?? item.listPrice ?? item.price,
-                          priceTiers: item.priceTiers,
-                          discountPct: item.discountPct,
-                        },
-                        item.quantity,
-                      ) * item.quantity,
+              <li key={item.id} className="flex gap-3 py-3.5">
+                <div className={cn("relative size-16 shrink-0 bg-white", unavailable && "opacity-50")}>
+                  {item.image && item.image !== "/product-bundle.png" ? (
+                    <Image src={item.image} alt="" fill sizes="64px" className="object-cover" />
+                  ) : (
+                    <span className="flex size-full items-center justify-center text-navy/60">
+                      <ShoppingBag aria-hidden className="size-6" />
+                    </span>
+                  )}
+                  <span className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-navy text-[11px] font-semibold text-primary-foreground tabular-nums">
+                    {item.quantity}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col justify-center">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {item.id.startsWith("deal__") ? "Bundle deal" : item.category}
+                  </p>
+                  <p className="text-sm font-medium leading-snug">
+                    {item.name} <span className="sr-only">, quantity {item.quantity}</span>
+                  </p>
+                  {unavailable ? (
+                    <p className="mt-1 text-xs font-medium text-destructive">Out of stock</p>
+                  ) : stock && stock.available <= 10 ? (
+                    <p className="mt-1 text-xs text-warning">Only {stock.available} left</p>
+                  ) : null}
+                  {unavailable && (
+                    <button type="button" onClick={() => onRemoveItem(item.id)} className="mt-1 min-h-9 self-start text-xs font-medium uppercase tracking-[0.12em] text-destructive underline-offset-4 hover:underline">
+                      Remove<span className="sr-only"> {item.name}</span>
+                    </button>
+                  )}
+                  {!unavailable && !item.id.startsWith("deal__") && stock && item.quantity > stock.available && (
+                    <button type="button" onClick={() => onUpdateQuantity(item.id, stock.available)} className="mt-1 min-h-9 self-start text-xs font-medium uppercase tracking-[0.12em] text-warning underline-offset-4 hover:underline">
+                      Reduce to {stock.available}
+                    </button>
+                  )}
+                </div>
+                <p className="self-center text-sm font-medium tabular-nums">
+                  {unavailable
+                    ? <span className="text-xs font-medium text-destructive">Unavailable</span>
+                    : (
+                      <Money
+                        amount={
+                          getUnitPriceForQuantity(
+                            {
+                              price: item.listPrice ?? item.price,
+                              listPrice: item.listPrice ?? item.price,
+                              skuPrice: item.skuPrice ?? item.listPrice ?? item.price,
+                              priceTiers: item.priceTiers,
+                              discountPct: item.discountPct,
+                            },
+                            item.quantity,
+                          ) * item.quantity
+                        }
+                      />
                     )}
-              </p>
-            </li>
+                </p>
+              </li>
             )
           })}
         </ul>
 
-        {/* Rewards */}
         {signedIn && (
-          <div className="mb-4 border border-gold/30 bg-lavender/40 p-3">
+          <div className="mb-5 border border-navy/15 bg-white p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-gold">
-                <Gift className="size-3.5" /> Rewards
+              <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-navy">
+                <Gift aria-hidden className="size-4" /> Rewards
               </p>
-              <p className="text-[11px] font-light text-muted-foreground tabular-nums">
-                {pointsBalance.toLocaleString()} pts
-              </p>
+              <p className="text-sm text-muted-foreground tabular-nums">{pointsBalance.toLocaleString()} pts</p>
             </div>
             {redeemable.length === 0 ? (
-              <p className="text-[11px] font-light text-muted-foreground">
-                Earn more points to redeem discounts here.
-              </p>
+              <p className="text-sm text-muted-foreground">Earn more points to redeem discounts here.</p>
             ) : (
-              <ul className="space-y-1.5">
+              <ul className="space-y-1">
                 {redeemable.map(r => (
                   <li key={r.id} className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-light leading-snug text-foreground">
-                      {r.label}
-                      <span className="ml-1 text-muted-foreground">({r.cost} pts)</span>
+                    <span className="text-sm leading-snug">
+                      {r.label} <span className="text-muted-foreground">({r.cost} pts)</span>
                     </span>
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      variant="outline"
                       disabled={redeemingReward === r.id}
                       onClick={() => onRedeemReward(r.id)}
-                      className="shrink-0 border border-gold/50 px-2 py-1 text-[10px] font-medium uppercase tracking-widest text-gold transition-colors hover:bg-gold hover:text-gold-foreground disabled:opacity-40"
+                      aria-label={`Redeem ${r.label} for ${r.cost} points`}
                     >
                       {redeemingReward === r.id ? "…" : "Redeem"}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
             )}
+            <p className="mt-2 text-xs text-muted-foreground">One rewards code applies per order.</p>
           </div>
         )}
 
-        {/* Promo codes — stackable */}
-        <div className="mb-4">
-          <p className="mb-1.5 text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-            Promo Codes
-          </p>
+        {/* Promo code: one regular code plus one rewards code per order */}
+        <div className="mb-5">
+          <label htmlFor={promoId} className="mb-2 block text-xs font-medium uppercase tracking-[0.14em]">Promo code</label>
           <div className="flex gap-2">
-            <input
+            <Input
+              id={promoId}
               type="text"
-              placeholder="Enter code…"
+              autoComplete="off"
+              autoCapitalize="characters"
+              placeholder="Enter code"
               value={promoInput}
               onChange={e => setPromoInput(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === "Enter" && applyPromo()}
-              className="flex-1 border border-border bg-background px-3 py-2.5 text-xs font-light outline-none focus:border-foreground transition-colors uppercase placeholder:normal-case placeholder:text-muted-foreground/50"
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  void applyPromo()
+                }
+              }}
+              aria-describedby={`${promoId}-hint ${promoId}-msg`}
+              aria-invalid={promoError ? true : undefined}
+              className="uppercase placeholder:normal-case"
             />
-            <button
-              type="button"
-              onClick={applyPromo}
-              className="shrink-0 border border-border px-3 py-2.5 text-[11px] font-medium uppercase tracking-widest hover:border-foreground transition-colors"
-            >
-              Apply
-            </button>
+            <Button variant="outline" onClick={() => void applyPromo()}>Apply</Button>
           </div>
-          {promoError && <p className="mt-1.5 text-[11px] font-light text-destructive">{promoError}</p>}
-          {rewardMsg && <p className="mt-1.5 text-[11px] font-light text-green-700">{rewardMsg}</p>}
+          <p id={`${promoId}-hint`} className="mt-1.5 text-xs text-muted-foreground">One promo code and one rewards code per order.</p>
+          <div id={`${promoId}-msg`} aria-live="polite">
+            {promoError && <p className="mt-1.5 text-sm text-destructive">{promoError}</p>}
+            {rewardMsg && <p className="mt-1.5 text-sm text-success">{rewardMsg}</p>}
+          </div>
           {appliedPromos.length > 0 && (
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-3 space-y-1.5" aria-label="Applied codes">
               {appliedPromos.map(p => (
-                <li key={p.code} className="flex items-center justify-between gap-2 border border-border/60 bg-secondary px-2.5 py-1.5">
-                  <p className="text-[11px] font-light text-green-700">
-                    ✓ {p.label} <span className="text-muted-foreground">({p.code})</span>
+                <li key={p.code} className="flex items-center justify-between gap-2 border border-border bg-white px-3 py-1">
+                  <p className="flex items-center gap-1.5 text-sm text-success">
+                    <Check aria-hidden className="size-4" /> {p.label} <span className="text-muted-foreground">({p.code})</span>
                   </p>
                   <button
                     type="button"
                     onClick={() => removePromo(p.code)}
-                    className="text-[10px] font-light uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
+                    aria-label={`Remove code ${p.code}`}
+                    className="flex size-9 items-center justify-center text-muted-foreground hover:text-foreground"
                   >
-                    Remove
+                    <X aria-hidden className="size-4" />
                   </button>
                 </li>
               ))}
@@ -1090,88 +1125,47 @@ function OrderSummary({
           )}
         </div>
 
-        <div className="space-y-2 border-t border-border pt-4">
-          <LineItem label="Subtotal" value={formatPrice(subtotal)} small />
+        <div className="space-y-2 border-t border-dashed border-navy/25 pt-4 font-mono">
+          <LineItem label="Subtotal" value={<MoneyTicker amount={subtotal} />} small />
           {appliedPromos.map(p => {
-            const amount = p.discountNgn > 0
-              ? p.discountNgn
-              : Math.round(subtotal * (p.discountPct / 100))
+            const amount = p.discountNgn > 0 ? p.discountNgn : Math.round(subtotal * (p.discountPct / 100))
             return (
               <LineItem
                 key={p.code}
-                label={p.code.startsWith("RWD-") ? "Rewards" : p.code}
-                value={`-${formatPrice(amount)}`}
+                label={promoKind(p.code) === "reward" ? "Rewards" : p.code}
+                value={<>−<Money amount={amount} /></>}
                 small
-                className="text-green-700"
+                className="text-success"
               />
             )
           })}
           {discount > 0 && appliedPromos.length > 1 && (
-            <LineItem label="Total discounts" value={`-${formatPrice(discount)}`} small className="text-green-700" />
+            <LineItem label="Total discounts" value={<>−<Money amount={discount} /></>} small className="text-success" />
           )}
-          <LineItem label={shippingCost === 0 ? "Standard Shipping" : "Express Shipping"} value={shippingCost === 0 ? "Free" : formatPrice(shippingCost)} small />
-          <p className="-mt-1 text-[10px] font-light text-muted-foreground">
-            {shippingCost === 0 ? "5–7 business days" : "2–3 business days"}
-          </p>
-          <LineItem label="VAT (7.5%)" value={formatPrice(tax)} small />
-          <div className="border-t border-border pt-2 mt-2">
-            <LineItem label="Total" value={formatPrice(total)} bold />
+          <LineItem label={shippingCost === 0 ? "Standard shipping (5–7 days)" : "Express shipping (2–3 days)"} value={shippingCost === 0 ? "Free" : <MoneyTicker amount={shippingCost} />} small />
+          <LineItem label="VAT (7.5%)" value={<MoneyTicker amount={tax} />} small />
+          <div className="mt-3 border-t-2 border-double border-navy/30 pt-3 font-sans">
+            <LineItem label="Total" value={<MoneyTicker amount={total} />} bold />
           </div>
         </div>
       </div>
 
-      {/* Trust badges */}
-      <div className="mt-4 flex flex-col gap-2 text-center text-[10px] font-light uppercase tracking-[0.18em] text-muted-foreground">
-        <span className="flex items-center justify-center gap-1.5">
-          <Lock className="size-3" /> Payments secured by Paystack
-        </span>
-        <Link href="/returns" className="underline-offset-2 hover:text-foreground hover:underline">
-          Easy returns
-        </Link>
-      </div>
+      {!bare && (
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <Lock aria-hidden className="size-3.5" /> Payments secured by Paystack ·{" "}
+          <Link href="/returns" prefetch={false} className="underline underline-offset-4 hover:text-foreground">Returns</Link>
+        </p>
+      )}
     </aside>
   )
 }
 
 /* ─── Shared helpers ───────────────────────────────────────── */
-function FormField({
-  label, value, onChange, type = "text", required, placeholder, inputMode,
-}: {
-  label: string
-  value: string
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
-  type?: string
-  required?: boolean
-  placeholder?: string
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"]
-}) {
+function LineItem({ label, value, bold, small, className }: { label: string; value: React.ReactNode; bold?: boolean; small?: boolean; className?: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-light uppercase tracking-[0.15em] text-muted-foreground">
-        {label}{required && <span className="text-gold ml-0.5">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        required={required}
-        className="border border-border bg-background px-4 py-3 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
-      />
-    </div>
-  )
-}
-
-function LineItem({ label, value, bold, small, className }: { label: string; value: string; bold?: boolean; small?: boolean; className?: string }) {
-  return (
-    <div className={cn("flex items-center justify-between", className)}>
-      <span className={cn("font-light text-muted-foreground", small ? "text-[11px]" : "text-xs uppercase tracking-[0.12em]")}>
-        {label}
-      </span>
-      <span className={cn(bold ? "font-serif text-lg font-medium" : small ? "text-xs" : "text-sm", className)}>
-        {value}
-      </span>
+    <div className={cn("flex items-center justify-between gap-4", className)}>
+      <span className={cn(small ? "text-sm" : "text-sm", bold ? "font-medium text-foreground" : "text-muted-foreground")}>{label}</span>
+      <span className={cn("tabular-nums", bold ? "font-serif text-2xl text-navy-deep" : "text-sm", className)}>{value}</span>
     </div>
   )
 }

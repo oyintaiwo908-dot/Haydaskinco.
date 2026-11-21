@@ -13,4 +13,24 @@ __v0_jsx-dev-runtime.ts
 # Common ignores
 node_modules
 .next/
+# Playwright (mock-mode build and reports)
+.next-e2e/
+test-results/
+playwright-report/
+blob-report/
 .DS_Store
+# Any env file except the committed example
+.env*
+!.env.local.example
+
+# Build / tool caches
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.pnpm-store/
+
+# Never commit dashboard/session dumps
+db.json
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/

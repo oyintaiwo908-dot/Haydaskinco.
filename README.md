@@ -68,12 +68,12 @@ Fill in `.env` (see [Environment variables](#environment-variables)).
 
 ### Database
 
-Apply SQL migrations in order under `supabase/migrations/` (through **030**):
+Apply SQL migrations in order under `supabase/migrations/` (through **031**):
 
 1. Supabase Dashboard → SQL Editor, or  
 2. Supabase CLI: `supabase db push` (if linked)
 
-Critical hardening migrations: **026**, **027**, **029** (029 removes stock holds — decrement only on pay).
+Critical hardening migrations: **026**, **027**, **029** (029 removes stock holds — decrement only on pay), **031** (closes anon RPCs, points farming, public promo listing; see [Security notes](#security-notes)). Test new migrations on a local Supabase before production.
 
 ### Run locally
 
@@ -89,7 +89,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `pnpm build` | Production build |
 | `pnpm start` | Serve production build |
 | `pnpm typecheck` | TypeScript check |
-| `pnpm lint` | ESLint |
+| `pnpm lint` | ESLint (flat config, `eslint-config-next`) |
+| `pnpm security:smoke` | HTTP security smoke tests against a running `next start` (see `scripts/security/smoke.mjs`) |
 
 ---
 
@@ -104,14 +105,12 @@ Copy from `.env.local.example`. Never commit real secrets.
 | `SUPABASE_SERVICE_ROLE_KEY` | **No** | Server only — bypasses RLS |
 | `NEXT_PUBLIC_SITE_URL` | Yes | Canonical origin (`http://localhost:3000` locally; live domain in prod) |
 | `PAYSTACK_SECRET_KEY` | **No** | `sk_test_…` or `sk_live_…` |
-| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Yes | `pk_…` — safe in the browser (Paystack design) |
 | `RESEND_API_KEY` | **No** | Transactional email |
 | `EMAIL_FROM` / `EMAIL_TO` | Mixed | Sender + notify inbox |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | Yes | Floating chat |
 | `ALLOW_ADMIN_REGISTER` | **No** | `true` only if you need `/admin/register` in prod |
 | `ALLOW_MOCK_CHECKOUT` | **No** | Mock checkout only when Paystack secret is **unset**, never in production |
-
-Optional Flutterwave keys exist in the example file but Paystack is the primary path.
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | **No** | Shared rate-limit store. Without them limits are per server instance only |
 
 ---
 
@@ -186,9 +185,23 @@ Image Optimization is disabled (`images.unoptimized: true`) to stay within Verce
 ## Security notes
 
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` or `PAYSTACK_SECRET_KEY` to the client
-- `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` is intentionally public
 - Production admin registration is off unless `ALLOW_ADMIN_REGISTER=true`
-- Prefer service-role only for fulfill / order writes
+- All order writes go through server routes with the service role. Since 031 the admin browser client can only read orders; status changes go through `POST /api/admin/orders/status`, which enforces this transition table (targets marked * also need `payment_status = 'paid'`):
+
+  | From | Allowed to |
+  |------|-----------|
+  | pending | processing*, cancelled |
+  | processing | shipped*, cancelled, refunded* |
+  | shipped | fulfilled*, processing*, refunded* |
+  | fulfilled | shipped*, refunded* |
+  | cancelled | pending, refunded* |
+  | refunded | (none) |
+
+  Status changes do not move money or stock: refund in Paystack, and restock manually if needed.
+- Checkout accepts at most **one promo code plus one rewards (`RWD-`) code** per order.
+- Internal SQL functions (`decrement_product_stock`, `award_order_points`, `complete_order_payment`, …) are not callable with the anon/authenticated keys (031). Any new `security definer` function needs an explicit `revoke execute … from public, anon, authenticated` unless it is meant to be a public RPC.
+- Security headers are set in `next.config.mjs`. The CSP ships as `Content-Security-Policy-Report-Only`; switch it to enforcing once production shows no violations.
+- Local security checks: `supabase test db` runs `supabase/tests/*.sql` (pgTAP) and `scripts/security/supabase-probe.mjs` replays the anon-key attacks. Both must target a **local** Supabase only.
 
 ---
 

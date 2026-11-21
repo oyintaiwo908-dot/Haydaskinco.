@@ -80,7 +80,7 @@ export default function AdminRegisterForm() {
       <div className="flex min-h-screen flex-col items-center justify-center px-5 py-12">
         <div className="w-full max-w-md text-center">
           <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full bg-green-50 border border-green-200">
-            <ShieldCheck className="size-8 text-green-600" />
+            <ShieldCheck className="size-8 text-success" />
           </div>
           <h1 className="font-serif text-3xl font-medium mb-2">Account created</h1>
           <p className="text-sm font-light text-muted-foreground mb-8">
@@ -159,7 +159,7 @@ WHERE email = '${form.email}';`}
                   onChange={set("name")}
                   placeholder="Your name"
                   required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                 />
               </div>
             </div>
@@ -174,7 +174,7 @@ WHERE email = '${form.email}';`}
                   onChange={set("email")}
                   placeholder="you@haydaskinco.com"
                   required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full border border-border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                 />
               </div>
             </div>
@@ -189,7 +189,7 @@ WHERE email = '${form.email}';`}
                   onChange={set("password")}
                   placeholder="••••••••"
                   required
-                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full border border-border bg-background py-3 pl-11 pr-11 text-sm font-light outline-none focus:border-foreground transition-colors placeholder:text-muted-foreground"
                 />
                 <button
                   type="button"
@@ -242,7 +242,7 @@ WHERE email = '${form.email}';`}
                   placeholder="••••••••"
                   required
                   className={cn(
-                    "w-full border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none transition-colors placeholder:text-muted-foreground/40",
+                    "w-full border bg-background py-3 pl-11 pr-4 text-sm font-light outline-none transition-colors placeholder:text-muted-foreground",
                     form.confirm && form.confirm !== form.password
                       ? "border-destructive focus:border-destructive"
                       : "border-border focus:border-foreground",

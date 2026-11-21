@@ -288,7 +288,9 @@ export function AdminDealForm({ deal }: { deal?: Deal }) {
         },
         deal?.id,
       )
-      await revalidateDeals(slug)
+      // Save already succeeded; a refused refresh only delays the storefront (≤1h ISR window).
+      const refreshed = await revalidateDeals(slug)
+      if (!refreshed.ok) console.warn("[deal] storefront refresh skipped:", refreshed.error)
       setSaved(true)
       setTimeout(() => router.push("/admin/deals"), 800)
     } catch (err) {

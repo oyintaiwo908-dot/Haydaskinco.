@@ -15,6 +15,7 @@ import {
 } from "@/lib/orders"
 import { getOrderByReference } from "@/lib/supabase/orders"
 import { OrderItemThumb } from "@/components/order-item-thumb"
+import { allowedStatusTargets, requestStatusChange } from "@/components/admin-order-status"
 import { cn } from "@/lib/utils"
 
 function formatCurrency(n: number) {
@@ -41,6 +42,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true)
   const [statusOpen, setStatusOpen] = useState(false)
   const [copiedRef, setCopiedRef] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [statusNotice, setStatusNotice] = useState<{ kind: "error" | "ok"; message: string } | null>(null)
 
   useEffect(() => {
     getOrderByReference(id).then(o => {
@@ -77,23 +80,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const progressStatuses: OrderStatus[] = ["pending", "processing", "shipped", "fulfilled"]
   const progressIdx = isCancelled ? -1 : progressStatuses.indexOf(order.status)
 
+  const targets = allowedStatusTargets(order)
+
+  /** No optimistic change: the server enforces the transition table and may refuse (409). */
   async function updateStatus(status: OrderStatus) {
-    setOrder(prev => prev ? { ...prev, status, updatedAt: new Date().toISOString() } : prev)
     setStatusOpen(false)
-    try {
-      const res = await fetch("/api/admin/orders/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference: order!.reference, status }),
-      })
-      if (!res.ok) {
-        const o = await getOrderByReference(id)
-        setOrder(o)
-      }
-    } catch {
-      const o = await getOrderByReference(id)
-      setOrder(o)
-    }
+    setSaving(true)
+    setStatusNotice(null)
+    const res = await requestStatusChange(order!.reference, status)
+    const fresh = await getOrderByReference(id)
+    setOrder(fresh)
+    setSaving(false)
+    setStatusNotice(
+      res.ok
+        ? { kind: "ok", message: `Order moved to ${ORDER_STATUS_META[status].label}.` }
+        : { kind: "error", message: res.message },
+    )
   }
 
   function copyRef() {
@@ -121,29 +123,54 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <button
             type="button"
             onClick={() => setStatusOpen(v => !v)}
+            disabled={saving || targets.length === 0}
+            aria-expanded={statusOpen}
+            aria-label={`Status: ${statusMeta.label}. ${targets.length ? "Change status" : "No further changes allowed"}`}
             className={cn(
-              "flex w-full items-center justify-center gap-2 border px-4 py-2 text-xs font-medium uppercase tracking-[0.12em] sm:w-auto",
+              "flex w-full items-center justify-center gap-2 border px-4 py-2 text-xs font-medium uppercase tracking-[0.12em] disabled:cursor-default sm:w-auto",
               statusMeta.border, statusMeta.bg, statusMeta.color,
             )}
           >
-            {statusMeta.label} <ChevronDown className="size-3.5" />
+            {saving ? "Saving…" : statusMeta.label}
+            {targets.length > 0 && !saving && <ChevronDown aria-hidden className="size-3.5" />}
           </button>
           {statusOpen && (
-            <div className="absolute right-0 top-full z-30 mt-1 w-44 border border-border bg-background shadow-lg">
-              {(Object.keys(ORDER_STATUS_META) as OrderStatus[]).map(s => (
+            <div
+              className="absolute right-0 top-full z-30 mt-1 w-56 border border-border bg-background shadow-lg"
+              onKeyDown={e => e.key === "Escape" && setStatusOpen(false)}
+            >
+              <p className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Move to</p>
+              {targets.map(t => (
                 <button
-                  key={s}
+                  key={t.status}
                   type="button"
-                  onClick={() => updateStatus(s)}
-                  className="block w-full px-4 py-2.5 text-left text-xs font-light capitalize hover:bg-muted"
+                  disabled={Boolean(t.disabledReason)}
+                  title={t.disabledReason ?? undefined}
+                  onClick={() => updateStatus(t.status)}
+                  className="flex w-full flex-col items-start px-4 py-2.5 text-left text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                 >
-                  {ORDER_STATUS_META[s].label}
+                  <span className="font-medium">{ORDER_STATUS_META[t.status].label}</span>
+                  {t.disabledReason && <span className="text-[10px] text-muted-foreground">{t.disabledReason}</span>}
                 </button>
               ))}
             </div>
           )}
         </div>
       </div>
+      {statusNotice && (
+        <div
+          role={statusNotice.kind === "error" ? "alert" : "status"}
+          className={cn(
+            "mx-4 flex items-start justify-between gap-3 border px-4 py-3 text-sm sm:mx-6 lg:mx-8",
+            statusNotice.kind === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-success/30 bg-success/5 text-success",
+          )}
+        >
+          <p>{statusNotice.message}</p>
+          <button type="button" onClick={() => setStatusNotice(null)} className="shrink-0 text-xs underline underline-offset-4">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="admin-page-body grid gap-8 lg:grid-cols-3">
         <div className="flex min-h-0 flex-col gap-6 lg:col-span-2">

@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Plus, Search, Edit2, Trash2, Eye, Clock, BookOpen, RefreshCw } from "lucide-react"
 import { type Journal } from "@/lib/journals"
 import { getAllJournals, deleteJournal } from "@/lib/supabase/journals"
+import { revalidateJournal } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
 
 export default function AdminJournalsPage() {
@@ -36,6 +37,11 @@ export default function AdminJournalsPage() {
 
   async function confirmDelete(id: string) {
     try { await deleteJournal(id) } catch { /* fall through */ }
+    // Storefront journal pages cache for up to 1h; refresh them (non-blocking).
+    const slug = articles.find(a => a.id === id)?.slug
+    void revalidateJournal(slug).then(r => {
+      if (!r.ok) console.warn("[journal] storefront refresh skipped:", r.error)
+    })
     setArticles((prev) => prev.filter((a) => a.id !== id))
     setDeleteId(null)
   }

@@ -7,6 +7,7 @@ import { createClient as createSb } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/client"
 import { isMissingArchiveColumn, markArchiveColumnMissing } from "@/lib/supabase/archive-column"
 import { bareDealId, isDealCartId } from "@/lib/deals"
+import { products as mockProducts } from "@/lib/products"
 
 export type StockAvailability = {
   productId: string
@@ -36,7 +37,17 @@ export async function fetchLiveStock(
   if (!ids.length) return {}
 
   const supabase = getReadClient()
-  if (!supabase) return {}
+  // Mock mode (no Supabase configured: local development and the e2e suite) answers from the
+  // mock catalogue, the same data the mock product pages show. Without this every cart line
+  // looked unavailable and checkout could never proceed. Never runs when Supabase is set.
+  if (!supabase) {
+    const map: Record<string, { stock: number; published: boolean }> = {}
+    for (const id of ids) {
+      const product = mockProducts.find(p => p.id === id)
+      if (product) map[id] = { stock: product.stock, published: true }
+    }
+    return map
+  }
 
   const plainIds = ids.filter(id => !isDealCartId(id))
   const dealCartIds = ids.filter(isDealCartId)

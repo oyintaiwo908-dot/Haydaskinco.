@@ -1,9 +1,17 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { allowMockCheckout, isPaystackConfigured, toKobo, verifyTransaction } from "@/lib/paystack"
+import {
+  allowMockCheckout,
+  isPaystackConfigured,
+  isFinalFailureStatus,
+  paystackAmountMatches,
+  verifyTransaction,
+} from "@/lib/paystack"
 import { fulfillPaidOrder } from "@/lib/supabase/orders"
 import { sendOrderConfirmationIfNew } from "@/lib/email/order"
+import { revalidateStockForOrder } from "@/lib/stock-revalidate"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { errorResponse, jsonError, readJsonObject, stringField } from "@/lib/api-guard"
 
 export async function POST(request: Request) {
   try {
@@ -11,20 +19,18 @@ export async function POST(request: Request) {
     const limited = await rateLimit(`orders-verify:${ip}`, 20, 60_000)
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec)
 
-    const body = await request.json()
-    const reference = typeof body.reference === "string" ? body.reference.trim() : ""
+    const body = await readJsonObject(request, 2_000)
+    const reference = stringField(body, "reference", 80, "Reference")
     const clientMock = Boolean(body.mock)
 
     if (!reference) {
-      return NextResponse.json({ error: "Missing reference." }, { status: 400 })
+      return jsonError("Missing reference.", 400)
     }
 
     const db = createAdminClient()
     if (!db) {
-      return NextResponse.json(
-        { error: "Server misconfigured (service role required)." },
-        { status: 503 },
-      )
+      console.error("[orders/verify] SUPABASE_SERVICE_ROLE_KEY is not configured")
+      return jsonError("Payment confirmation is temporarily unavailable.", 503)
     }
 
     const { data: order, error: orderError } = await db
@@ -35,7 +41,7 @@ export async function POST(request: Request) {
 
     if (orderError) {
       console.error("[orders/verify] lookup:", orderError.message)
-      return NextResponse.json({ error: orderError.message }, { status: 500 })
+      return jsonError("Could not look up the order.", 500)
     }
     if (!order) {
       return NextResponse.json({ ok: false, error: "Order not found." }, { status: 404 })
@@ -56,20 +62,24 @@ export async function POST(request: Request) {
 
       const tx = await verifyTransaction(reference)
       if (tx.status !== "success") {
-        await db
-          .from("orders")
-          .update({ payment_status: "failed", updated_at: new Date().toISOString() })
-          .eq("reference", reference)
+        // Only record a failure Paystack considers final. "abandoned" / "ongoing" /
+        // "pending" can still succeed, and anyone holding the reference can call this.
+        if (isFinalFailureStatus(tx.status)) {
+          await db
+            .from("orders")
+            .update({ payment_status: "failed", updated_at: new Date().toISOString() })
+            .eq("reference", reference)
+            .eq("payment_status", "unpaid")
+        }
         return NextResponse.json(
-          { ok: false, error: `Payment not successful (${tx.status}).` },
+          { ok: false, error: "Payment has not been completed yet." },
           { status: 400 },
         )
       }
 
-      const expectedKobo = toKobo(Number(order.total))
-      if (typeof tx.amount === "number" && tx.amount !== expectedKobo) {
+      if (!paystackAmountMatches(tx, Number(order.total))) {
         console.error(
-          `[orders/verify] amount mismatch ref=${reference} paystack=${tx.amount} expected=${expectedKobo}`,
+          `[orders/verify] amount/currency mismatch ref=${reference} paystack=${tx.amount} ${tx.currency ?? "?"}`,
         )
         return NextResponse.json(
           { ok: false, error: "Paid amount does not match order total." },
@@ -81,12 +91,13 @@ export async function POST(request: Request) {
       if (!result.ok) {
         console.error("[orders/verify] fulfill:", result.message)
         return NextResponse.json(
-          { ok: false, error: result.message ?? "Could not complete order." },
+          { ok: false, error: "Could not complete the order. Please contact support." },
           { status: 500 },
         )
       }
 
-      void sendOrderConfirmationIfNew(reference, result.message)
+      after(() => sendOrderConfirmationIfNew(reference, result.message))
+      after(() => revalidateStockForOrder(db, reference))
       return NextResponse.json({
         ok: true,
         reference,
@@ -103,7 +114,8 @@ export async function POST(request: Request) {
 
     const result = await fulfillPaidOrder(db, reference)
     if (result.ok) {
-      void sendOrderConfirmationIfNew(reference, result.message)
+      after(() => sendOrderConfirmationIfNew(reference, result.message))
+      after(() => revalidateStockForOrder(db, reference))
     }
     return NextResponse.json({
       ok: result.ok,
@@ -113,10 +125,6 @@ export async function POST(request: Request) {
       error: result.ok ? undefined : result.message,
     })
   } catch (err) {
-    console.error("[orders/verify]", err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Verify failed." },
-      { status: 500 },
-    )
+    return errorResponse("orders/verify", err, "Could not verify payment. Please try again.")
   }
 }

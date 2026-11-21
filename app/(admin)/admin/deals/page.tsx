@@ -6,7 +6,15 @@ import Link from "next/link"
 import { Plus, Search, Edit2, Trash2, Tag, ToggleLeft, ToggleRight, RefreshCw } from "lucide-react"
 import { type Deal } from "@/lib/deals"
 import { getAllDeals, deleteDeal, toggleDealStatus } from "@/lib/supabase/deals"
+import { revalidateDeals } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
+
+/** Storefront deal pages cache for up to 1h; refresh them after a change (non-blocking). */
+function refreshStorefrontDeals(id: string) {
+  void revalidateDeals(id).then(r => {
+    if (!r.ok) console.warn("[deal] storefront refresh skipped:", r.error)
+  })
+}
 
 const STATUS_STYLE: Record<Deal["status"], { label: string; cls: string }> = {
   active:   { label: "Active",   cls: "bg-green-50 text-green-700 border-green-200" },
@@ -44,10 +52,12 @@ export default function AdminDealsPage() {
     const isActive = deal.status !== "active"
     setDeals(prev => prev.map(d => d.id !== id ? d : { ...d, status: isActive ? "active" : "draft" }))
     await toggleDealStatus(id, isActive)
+    refreshStorefrontDeals(id)
   }
 
   async function confirmDelete(id: string) {
     try { await deleteDeal(id) } catch { /* fall through */ }
+    refreshStorefrontDeals(id)
     setDeals(prev => prev.filter(d => d.id !== id))
     setDeleteId(null)
   }

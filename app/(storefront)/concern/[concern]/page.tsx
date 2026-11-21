@@ -10,6 +10,12 @@ function slugToLabel(slug: string) {
   return resolveCatalogLabel(ALL_CONCERNS, slug)
 }
 
+/**
+ * 1h ISR (was build-time only, so new products never appeared until a redeploy).
+ * Admin product saves refresh these pages on demand (app/actions/revalidate.ts).
+ */
+export const revalidate = 3600
+
 export function generateStaticParams() {
   return ALL_CONCERNS.map(c => ({ concern: slugifyCatalogLabel(c) }))
 }
