@@ -11,7 +11,7 @@ import {
   resolveCatalogLabel,
   slugifyCatalogLabel,
 } from "@/lib/catalog"
-import { queryProducts } from "@/lib/supabase/products"
+import { countProducts, queryProducts } from "@/lib/supabase/products"
 import { getActiveBrands } from "@/lib/supabase/brands"
 import {
   getCategoryTree,
@@ -34,6 +34,11 @@ import { useFlip } from "@/components/motion/use-flip"
 
 /** Slider end. At this value the control means “all prices” and is not sent as priceMax. */
 const PRICE_CEILING = 1_000_000
+
+/** Products fetched per page on the shop grid ("Load more" fetches the next page). */
+const PAGE_SIZE = 96
+
+const NO_PRODUCTS: Product[] = []
 
 const GRID = "grid grid-cols-2 items-start gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-6 md:gap-y-12 xl:grid-cols-4"
 
@@ -173,7 +178,7 @@ export function ShopGrid({
       inStockOnly,
       minRating,
       sort,
-      limit: 96,
+      limit: PAGE_SIZE,
     }),
     [categoryName, brand, concern, ingredient, skinType, saleOnly, priceFiltered, priceMax, inStockOnly, minRating, sort],
   )
@@ -188,6 +193,9 @@ export function ShopGrid({
     list: startsFiltered ? [] : initialProducts ?? [],
   }))
   const loading = result.key !== queryKey
+  const [total, setTotal] = useState<{ key: string; n: number } | null>(null)
+  const [more, setMore] = useState<{ key: string; list: Product[]; done: boolean } | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   // Query Supabase with filters (DB-level), not client-side array filtering. The first run
   // also refreshes the ISR list silently (up to 1h old) without a loading state.
@@ -197,10 +205,41 @@ export function ShopGrid({
     queryProducts(query).then(list => {
       if (!cancelled) setResult({ key: queryKey, list })
     })
+    countProducts(query).then(n => {
+      if (!cancelled) setTotal({ key: queryKey, n })
+    })
     return () => { cancelled = true }
   }, [query, queryKey, urlNeedsResolve, treeReady])
 
-  const filtered = result.list
+  // "Load more": extra pages for the current query, appended client-side (no server request).
+  const extra = more?.key === queryKey ? more.list : NO_PRODUCTS
+  const totalCount = total?.key === queryKey ? total.n : null
+
+  async function loadMore() {
+    if (loadingMore || loading) return
+    const key = queryKey
+    const offset = result.list.length + extra.length
+    setLoadingMore(true)
+    try {
+      const next = await queryProducts({ ...query, offset })
+      setMore(prev => {
+        const base = prev?.key === key ? prev.list : []
+        return { key, list: [...base, ...next], done: next.length < PAGE_SIZE }
+      })
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  // De-duplicate across pages in case the catalogue changed between requests.
+  const filtered = useMemo(() => {
+    if (extra.length === 0) return result.list
+    const seen = new Set(result.list.map(p => p.id))
+    return [...result.list, ...extra.filter(p => !seen.has(p.id) && seen.add(p.id))]
+  }, [result.list, extra])
+  const moreDone = more?.key === queryKey ? more.done : result.list.length < PAGE_SIZE
+  const hasMore = !moreDone && (totalCount == null || filtered.length < totalCount)
+  const shownCount = totalCount ?? filtered.length
   // Filter changes: cards that stay glide to their new places and new ones rise in. Never on
   // the first render: the server-rendered grid must not animate again when this takes over.
   const gridRef = useRef<HTMLDivElement>(null)
@@ -258,7 +297,7 @@ export function ShopGrid({
     window.history.replaceState(null, "", "/shop")
   }
 
-  const countLabel = loading ? "Loading…" : `${filtered.length} product${filtered.length !== 1 ? "s" : ""}`
+  const countLabel = loading ? "Loading…" : `${shownCount} product${shownCount !== 1 ? "s" : ""}`
 
   /** `idPrefix` keeps ids unique: the fields render in the sidebar and in the mobile sheet. */
   const filterFields = (idPrefix: string) => (
@@ -411,6 +450,17 @@ export function ShopGrid({
               ))}
             </div>
           )}
+
+          {!loading && filtered.length > 0 && hasMore && (
+            <div className="mt-14 flex flex-col items-center gap-4">
+              <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">
+                Showing {filtered.length}{totalCount != null ? ` of ${totalCount}` : ""} products
+              </p>
+              <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -427,7 +477,7 @@ export function ShopGrid({
               <Button variant="outline" onClick={clearAll}>Clear</Button>
             )}
             <Button block onClick={() => setFiltersOpen(false)}>
-              {loading ? "Show products" : `Show ${filtered.length} product${filtered.length === 1 ? "" : "s"}`}
+              {loading ? "Show products" : `Show ${shownCount} product${shownCount === 1 ? "" : "s"}`}
             </Button>
           </div>
         }

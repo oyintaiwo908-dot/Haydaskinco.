@@ -18,7 +18,9 @@ import { getActiveDeals } from "@/lib/supabase/deals"
 import { getPublishedJournals } from "@/lib/supabase/journals"
 import { ALL_CONCERNS, ALL_SKIN_TYPES, slugifyCatalogLabel } from "@/lib/catalog"
 import { getEffectivePrice, hasDiscount, type Product } from "@/lib/products"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { getSiteUrl } from "@/lib/site"
+import { FREE_STANDARD_DELIVERY, SOCIAL_URLS } from "@/lib/storefront-copy"
+import { getWhatsAppDisplay } from "@/lib/whatsapp"
 
 /** 1h ISR; admin saves refresh it on demand (app/actions/revalidate.ts). Short windows burn Vercel CPU. */
 export const revalidate = 3600
@@ -539,9 +541,50 @@ function RewardsBand() {
   )
 }
 
+function OrganizationJsonLd() {
+  const siteUrl = getSiteUrl()
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "OnlineStore",
+        "@id": `${siteUrl}/#organization`,
+        name: "HAYDA SKINCo.",
+        url: siteUrl,
+        logo: `${siteUrl}/icon-512.png`,
+        image: `${siteUrl}/seo.png`,
+        description:
+          "Nigeria's hub for premium skincare. Authentic products from trusted brands, delivered nationwide.",
+        email: "hello@haydaskinco.com",
+        telephone: getWhatsAppDisplay(),
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Lagos",
+          addressCountry: "NG",
+        },
+        sameAs: [SOCIAL_URLS.instagram],
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${siteUrl}/#website`,
+        name: "HAYDA SKINCo.",
+        url: siteUrl,
+        publisher: { "@id": `${siteUrl}/#organization` },
+      },
+    ],
+  }
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+    />
+  )
+}
+
 export default function HomePage() {
   return (
     <>
+      <OrganizationJsonLd />
       <HomeHeroSlider />
       <StatementBand />
       <BrandMarquee />

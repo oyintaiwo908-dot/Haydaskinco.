@@ -120,7 +120,8 @@ export function SiteFooter() {
               </li>
             </ul>
             <ul className="mt-5 flex gap-2" aria-label="HAYDA on social media">
-              {SOCIAL_LINKS.map(s => {
+              {/* Only accounts that exist are linked; add TikTok / Facebook here once they are live. */}
+              {SOCIAL_LINKS.filter(s => s.label === "Instagram").map(s => {
                 const Icon = SOCIAL_ICONS[s.label]
                 return (
                   <li key={s.label}>
