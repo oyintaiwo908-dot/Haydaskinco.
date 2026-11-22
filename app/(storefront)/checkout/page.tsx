@@ -11,7 +11,8 @@ import { Field, Input, Select } from "@/components/ui/field"
 import { Money } from "@/components/ui/price"
 import { MoneyTicker } from "@/components/motion/money-ticker"
 import { BrandLogo } from "@/components/brand-logo"
-import { formatPrice, getUnitPriceForQuantity } from "@/lib/products"
+import { DELIVERY_LINE_LABEL, DELIVERY_NOTE } from "@/lib/storefront-copy"
+import { getUnitPriceForQuantity } from "@/lib/products"
 import { cn } from "@/lib/utils"
 import { getAddresses, getProfile, addAddress, type Address } from "@/lib/supabase/profile"
 import {
@@ -124,19 +125,21 @@ type AppliedPromo = {
 
 type PaymentMethod = "card" | "bank_transfer" | "ussd" | "mobile_money"
 
-/** Express shipping in NGN — keep in sync with `/api/orders`. */
-const EXPRESS_SHIPPING_NGN = 3000
+/**
+ * Delivery is not charged at checkout (owner decision): it is quoted and paid separately after
+ * the order. `/api/orders` charges no delivery fee whatever the client sends.
+ */
+const shippingCost = 0
 
-const SHIPPING_METHODS = [
-  { id: "standard" as const, label: "Standard shipping", desc: "5–7 business days", price: 0, priceLabel: "Free" },
-  {
-    id: "express" as const,
-    label: "Express shipping",
-    desc: "2–3 business days",
-    price: EXPRESS_SHIPPING_NGN,
-    priceLabel: formatPrice(EXPRESS_SHIPPING_NGN),
-  },
-]
+/** The delivery notice shown before payment and on the review step. */
+function DeliveryNotice({ className }: { className?: string }) {
+  return (
+    <p role="note" className={cn("flex items-start gap-3 border border-navy/15 bg-secondary px-4 py-3 text-sm text-navy-deep", className)}>
+      <Truck aria-hidden className="mt-0.5 size-4 shrink-0 text-navy" />
+      <span>{DELIVERY_NOTE}</span>
+    </p>
+  )
+}
 
 /** Server rule (/api/orders): at most one regular promo code plus one `RWD-` rewards code per order. */
 type PromoKind = "promo" | "reward"
@@ -352,8 +355,6 @@ export default function CheckoutPage() {
       return sum
     }, 0),
   )
-  const shippingCost =
-    SHIPPING_METHODS.find((m) => m.id === shipping.shippingMethod)?.price ?? 0
   const tax = Math.round(subtotal * 0.075)
   const total = Math.max(0, subtotal - discount + shippingCost + tax)
 
@@ -515,7 +516,7 @@ export default function CheckoutPage() {
 
   const summaryProps = {
     items, subtotal, discount, appliedPromos, promoInput, setPromoInput, applyPromo, removePromo,
-    promoError, rewardMsg, shippingCost, tax, total,
+    promoError, rewardMsg, tax, total,
     signedIn: Boolean(session), pointsBalance, redeemingReward, onRedeemReward: handleRedeemReward,
     stockById, hasStockIssues, onRemoveItem: removeItem, onUpdateQuantity: updateQuantity,
   }
@@ -584,7 +585,6 @@ export default function CheckoutPage() {
                 headingRef={stepHeadingRef}
                 shipping={shipping}
                 paymentMethod={paymentMethod}
-                shippingCost={shippingCost}
                 tax={tax}
                 discount={discount}
                 appliedPromos={appliedPromos}
@@ -692,40 +692,10 @@ function ShippingForm({
         </Field>
       </div>
 
-      <fieldset className="mt-8">
-        <legend className="mb-3 text-xs font-medium uppercase tracking-[0.14em]">Delivery</legend>
-        <div className="space-y-2">
-          {SHIPPING_METHODS.map((method) => {
-            const checked = data.shippingMethod === method.id
-            return (
-              <label
-                key={method.id}
-                className={cn(
-                  "flex min-h-16 cursor-pointer items-center justify-between gap-4 rounded-control border p-4 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
-                  checked ? "border-navy bg-secondary" : "border-input hover:border-navy",
-                )}
-              >
-                <span className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="shippingMethod"
-                    value={method.id}
-                    checked={checked}
-                    onChange={() => onChange({ ...data, shippingMethod: method.id })}
-                    className="size-4 accent-navy"
-                    data-focus="custom"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium">{method.label}</span>
-                    <span className="block text-sm text-muted-foreground">{method.desc}</span>
-                  </span>
-                </span>
-                <span className="text-sm font-medium tabular-nums">{method.price > 0 ? <Money amount={method.price} /> : method.priceLabel}</span>
-              </label>
-            )
-          })}
-        </div>
-      </fieldset>
+      <section className="mt-8" aria-labelledby="delivery-note-title">
+        <h3 id="delivery-note-title" className="mb-3 text-xs font-medium uppercase tracking-[0.14em]">Delivery</h3>
+        <DeliveryNotice />
+      </section>
 
       <StepActions>
         <Button type="submit" block size="lg" disabled={stockBlocked || stockChecking}>
@@ -832,12 +802,11 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
 }
 
 function ReviewStep({
-  shipping, paymentMethod, shippingCost, tax, discount, appliedPromos, subtotal, total, paying, payError, onBack, onEditShipping, onConfirm, headingRef,
+  shipping, paymentMethod, tax, discount, appliedPromos, subtotal, total, paying, payError, onBack, onEditShipping, onConfirm, headingRef,
 }: {
   headingRef: React.RefObject<HTMLHeadingElement | null>
   shipping: ShippingData
   paymentMethod: PaymentMethod
-  shippingCost: number
   tax: number
   discount: number
   appliedPromos: AppliedPromo[]
@@ -857,7 +826,7 @@ function ReviewStep({
         <section className="border border-border p-5" aria-labelledby="review-ship">
           <div className="mb-3 flex items-center justify-between">
             <h3 id="review-ship" className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em]">
-              <Truck aria-hidden className="size-4 text-navy" /> Shipping
+              <Truck aria-hidden className="size-4 text-navy" /> Delivery address
             </h3>
             <button type="button" onClick={onEditShipping} className="min-h-11 px-2 text-sm text-navy underline underline-offset-4">
               Edit<span className="sr-only"> shipping details</span>
@@ -868,9 +837,7 @@ function ReviewStep({
             {shipping.address}{shipping.apartment && `, ${shipping.apartment}`}, {shipping.city}, {shipping.state} {shipping.zip}
           </p>
           <p className="text-muted-foreground">{shipping.country}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {shipping.shippingMethod === "express" ? "Express shipping · 2–3 business days" : "Standard shipping · Free · 5–7 business days"}
-          </p>
+          <DeliveryNotice className="mt-4" />
         </section>
 
         <section className="border border-border p-5" aria-labelledby="review-pay">
@@ -894,7 +861,7 @@ function ReviewStep({
               className="text-success"
             />
           )}
-          <LineItem label={shippingCost === 0 ? "Standard shipping" : "Express shipping"} value={shippingCost === 0 ? "Free" : <Money amount={shippingCost} />} />
+          <LineItem label="Delivery" value={DELIVERY_LINE_LABEL} />
           <LineItem label="VAT (7.5%)" value={<Money amount={tax} />} />
           <div className="border-t border-border pt-2.5">
             <LineItem label="Total" value={<Money amount={total} />} bold />
@@ -928,7 +895,7 @@ function ReviewStep({
 /* ─── Order Summary ─────────────────────────────────────────── */
 function OrderSummary({
   items, subtotal, discount, appliedPromos, promoInput, setPromoInput, applyPromo, removePromo,
-  promoError, rewardMsg, shippingCost, tax, total,
+  promoError, rewardMsg, tax, total,
   signedIn, pointsBalance, redeemingReward, onRedeemReward,
   stockById, hasStockIssues, onRemoveItem, onUpdateQuantity,
   idPrefix, bare = false,
@@ -943,7 +910,6 @@ function OrderSummary({
   removePromo: (code: string) => void
   promoError: string
   rewardMsg: React.ReactNode
-  shippingCost: number
   tax: number
   total: number
   signedIn: boolean
@@ -981,7 +947,7 @@ function OrderSummary({
             const unavailable = Boolean(stock?.unavailable)
             return (
               <li key={item.id} className="flex gap-3 py-3.5">
-                <div className={cn("relative size-16 shrink-0 bg-white", unavailable && "opacity-50")}>
+                <div className={cn("product-stage relative size-16 shrink-0", unavailable && "opacity-50")}>
                   {item.image && item.image !== "/product-bundle.png" ? (
                     <Image src={item.image} alt="" fill sizes="64px" className="object-cover" />
                   ) : (
@@ -1142,7 +1108,7 @@ function OrderSummary({
           {discount > 0 && appliedPromos.length > 1 && (
             <LineItem label="Total discounts" value={<>−<Money amount={discount} /></>} small className="text-success" />
           )}
-          <LineItem label={shippingCost === 0 ? "Standard shipping (5–7 days)" : "Express shipping (2–3 days)"} value={shippingCost === 0 ? "Free" : <MoneyTicker amount={shippingCost} />} small />
+          <LineItem label="Delivery" value={DELIVERY_LINE_LABEL} small />
           <LineItem label="VAT (7.5%)" value={<MoneyTicker amount={tax} />} small />
           <div className="mt-3 border-t-2 border-double border-navy/30 pt-3 font-sans">
             <LineItem label="Total" value={<MoneyTicker amount={total} />} bold />

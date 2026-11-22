@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next"
 import { ALL_CONCERNS, ALL_INGREDIENTS, slugifyCatalogLabel } from "@/lib/catalog"
+import { SITE_HOLDING } from "@/lib/holding"
 import { getSiteUrl } from "@/lib/site"
 import { getDealIds } from "@/lib/supabase/deals"
 import { getPublishedSlugs } from "@/lib/supabase/journals"
@@ -8,6 +9,9 @@ import { getProductIds } from "@/lib/supabase/products"
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getSiteUrl()
   const now = new Date()
+
+  // Holding page until launch: advertise only the home page (no product or catalogue URLs).
+  if (SITE_HOLDING) return [{ url: base, lastModified: now }]
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: base, lastModified: now, changeFrequency: "daily", priority: 1 },

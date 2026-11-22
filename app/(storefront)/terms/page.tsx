@@ -35,8 +35,8 @@ export default function TermsPage() {
           <h2 className="font-serif text-xl font-medium text-foreground">Orders & payment</h2>
           <p>
             Orders are confirmed once payment is successfully verified. Prices are shown in Nigerian
-            Naira (₦). Shipping fees and delivery estimates are shown at checkout and may vary by
-            location and method.
+            Naira (₦). Delivery is not included in the amount paid at checkout: it is quoted and
+            paid separately after your order, and we will contact you to arrange it.
           </p>
         </section>
 

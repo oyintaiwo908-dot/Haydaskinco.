@@ -111,8 +111,23 @@ Copy from `.env.local.example`. Never commit real secrets.
 | `ALLOW_ADMIN_REGISTER` | **No** | `true` only if you need `/admin/register` in prod |
 | `ALLOW_MOCK_CHECKOUT` | **No** | Mock checkout only when Paystack secret is **unset**, never in production |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | **No** | Shared rate-limit store. Without them limits are per server instance only |
+| `NEXT_PUBLIC_SITE_HOLDING` | Yes | `1` = holding page on every storefront page until launch (build time: redeploy to change). Off when unset |
+| `SITE_PREVIEW_KEY` | **No** | Team preview while holding is on: visit `/?preview=<key>` once (8+ characters) |
 
 ---
+
+## Holding page (until launch)
+
+Set `NEXT_PUBLIC_SITE_HOLDING=1` and redeploy. While it is on:
+
+- every storefront page shows the holding page (logo, one line, email, WhatsApp, Instagram); the admin is unaffected
+- `robots.txt` disallows everything, pages carry `noindex`, and the sitemap lists only the home page
+- `/api/orders`, `/api/promo`, `/api/newsletter`, `/api/contact` and `/api/wholesale` answer `503` with a short message; the Paystack webhook and `/api/orders/verify` keep working for orders already in flight
+- nothing becomes dynamic and `proxy.ts` stays admin-only: the switch is a build-time variable
+
+**Team preview:** open any page with `?preview=<SITE_PREVIEW_KEY>`. The key is checked by `/api/preview` and the browser remembers preview mode until **Exit**. This is a convenience gate, not security: the pages are static, so the real page data is still inside each page's inline React Server Components payload (the visible HTML is the holding page), and someone who sets the browser flag by hand sees the site. Ordering stays blocked server-side either way. For a truly private preview, use a separate deploy (for example a branch deploy) built without the flag.
+
+Turn it off by removing the variable (or setting it to `0`) and redeploying.
 
 ## Paystack (live)
 

@@ -365,7 +365,7 @@ function Hero() {
                         <path id={`seal-${i}`} d="M50,50 m-36,0 a36,36 0 1,1 72,0 a36,36 0 1,1 -72,0" />
                       </defs>
                       <text fontSize="8.6" letterSpacing="1.9" fill="currentColor" fontFamily="var(--font-geist-sans), sans-serif">
-                        <textPath href={`#seal-${i}`}>AUTHENTIC · DELIVERED NATIONWIDE ·</textPath>
+                        <textPath href={`#seal-${i}`}>AUTHENTIC · TRUSTED BRANDS ·</textPath>
                       </text>
                     </svg>
                     <span className="absolute inset-0 flex items-center justify-center font-serif text-3xl italic text-navy-deep">H</span>

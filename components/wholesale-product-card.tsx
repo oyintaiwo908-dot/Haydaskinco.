@@ -23,7 +23,7 @@ export function WholesaleProductCard({
 
   return (
     <article className="group relative flex flex-col border border-border bg-background transition-colors duration-200 hover:border-navy/40">
-      <div className="relative aspect-square overflow-hidden bg-porcelain">
+      <div className="product-stage relative aspect-square overflow-hidden">
         <Image
           src={product.image || "/placeholder.svg"}
           alt=""

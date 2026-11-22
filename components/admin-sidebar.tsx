@@ -35,6 +35,7 @@ const NAV: NavItem[] = [
     label: "Dashboard",
     href: "/admin/dashboard",
     icon: LayoutDashboard,
+    fullAdmin: true,
   },
   {
     label: "Orders",
@@ -117,7 +118,7 @@ export function AdminSidebar() {
 
       {/* Mobile header bar — full width above content (layout is flex-col on mobile) */}
       <div className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-border bg-background px-4 lg:hidden">
-        <Link href="/admin/dashboard" className="font-serif text-lg font-medium tracking-[0.2em] sm:text-xl sm:tracking-[0.25em]">
+        <Link href="/admin" className="font-serif text-lg font-medium tracking-[0.2em] sm:text-xl sm:tracking-[0.25em]">
           HAYDA SKINCo.
         </Link>
         <button
@@ -140,7 +141,7 @@ export function AdminSidebar() {
         {/* Logo */}
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
           <div>
-            <Link href="/admin/dashboard" className="font-serif text-xl font-medium tracking-[0.25em]">
+            <Link href="/admin" className="font-serif text-xl font-medium tracking-[0.25em]">
               HAYDA SKINCo.
             </Link>
             <p className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground mt-0.5">

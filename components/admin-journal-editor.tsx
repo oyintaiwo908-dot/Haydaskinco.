@@ -12,6 +12,7 @@ import type { Journal } from "@/lib/journals"
 import { saveJournal } from "@/lib/supabase/journals"
 import { uploadProductImage } from "@/lib/supabase/storage"
 import { revalidateJournal } from "@/app/actions/revalidate"
+import { adminReturnUrl } from "@/components/admin-list-state"
 
 type FormState = {
   title: string
@@ -117,7 +118,7 @@ export function AdminJournalEditor({ journal }: { journal?: Journal }) {
       // Save already succeeded; a refused refresh only delays the storefront (≤1h ISR window).
       const refreshed = await revalidateJournal(slug)
       if (!refreshed.ok) console.warn("[journal] storefront refresh skipped:", refreshed.error)
-      router.push("/admin/journals")
+      router.push(adminReturnUrl("/admin/journals"), { scroll: false })
     } catch (err) {
       console.error("Save failed:", err)
       setSaving(false)
@@ -188,7 +189,7 @@ export function AdminJournalEditor({ journal }: { journal?: Journal }) {
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={() => router.push(adminReturnUrl("/admin/journals"), { scroll: false })}
             className="flex shrink-0 items-center gap-1.5 text-xs font-light text-muted-foreground hover:text-foreground transition-colors uppercase tracking-[0.15em]"
           >
             <ArrowLeft className="size-3.5" /> Journal

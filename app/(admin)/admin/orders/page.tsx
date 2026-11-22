@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 import Link from "next/link"
 import {
   Search, TrendingUp, ShoppingBag,
@@ -58,29 +59,30 @@ function formatDate(iso: string, short = false) {
 type OrdersPageData = { orders: Order[]; total: number; kpis: { revenue: number; pending: number; shipped: number; fulfilled: number } }
 
 export default function AdminOrdersPage() {
-  const [search, setSearch] = useState("")
-  const [searchDebounced, setSearchDebounced] = useState("")
-  const [statusFilter, setStatusFilterState] = useState<"all" | OrderStatus>("all")
-  const [sortKey, setSortKeyState] = useState<SortKey>("date_desc")
-  const [months, setMonthsState] = useState<MonthRange>(1)
-  const [page, setPage] = useState(1)
+  // Search, filters, sort and page live in the URL so returning from an order reopens this view.
+  const [query, setQuery] = useAdminListParams({ q: "", status: "all", sort: "date_desc", months: "1", page: "1" })
+  const searchDebounced = query.q
+  const statusFilter = query.status as "all" | OrderStatus
+  const sortKey = query.sort as SortKey
+  const months = Number(query.months) as MonthRange
+  const page = Math.max(1, parseInt(query.page, 10) || 1)
+  const setPage = (n: number) => setQuery({ page: String(n) })
+  const [search, setSearch] = useState(query.q)
   const [showSort, setShowSort] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
   const [statusNotice, setStatusNotice] = useState<{ kind: "error" | "ok"; message: string } | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
 
   // Filter changes go back to page 1 (set in the handlers, not in an effect).
-  const setStatusFilter = (v: "all" | OrderStatus) => { setStatusFilterState(v); setPage(1) }
-  const setSortKey = (v: SortKey) => { setSortKeyState(v); setPage(1) }
-  const setMonths = (v: MonthRange) => { setMonthsState(v); setPage(1) }
+  const setStatusFilter = (v: "all" | OrderStatus) => setQuery({ status: v, page: "1" })
+  const setSortKey = (v: SortKey) => setQuery({ sort: v, page: "1" })
+  const setMonths = (v: MonthRange) => setQuery({ months: String(v), page: "1" })
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setSearchDebounced(search)
-      setPage(1)
-    }, 300)
+    if (search === query.q) return
+    const t = setTimeout(() => setQuery({ q: search, page: "1" }), 300)
     return () => clearTimeout(t)
-  }, [search])
+  }, [search, query.q, setQuery])
 
   const queryKey = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick])
   const [result, setResult] = useState<{ key: string; data: OrdersPageData } | null>(null)
@@ -106,6 +108,7 @@ export default function AdminOrdersPage() {
   }, [searchDebounced, statusFilter, sortKey, months, page, reloadTick])
 
   const load = useCallback(() => setReloadTick(t => t + 1), [])
+  useAdminScrollRestore(!loading)
 
   /** No optimistic change: the server enforces the transition table and may refuse. */
   async function updateStatus(id: string, status: OrderStatus) {

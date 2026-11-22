@@ -30,7 +30,7 @@ import {
 import { isDealCartId } from "@/lib/deals"
 import { slugifyCategory } from "@/lib/supabase/categories"
 import { ALL_CONCERNS, ALL_INGREDIENTS, slugifyCatalogLabel } from "@/lib/catalog"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { DELIVERY_NOTE } from "@/lib/storefront-copy"
 import { cn } from "@/lib/utils"
 
 const PINNED_CONCERNS = new Set<string>(ALL_CONCERNS)
@@ -379,7 +379,7 @@ export function ProductDetail({ product, hideBenefits = false }: { product: Prod
           </button>
 
           <ul className="mt-6 grid grid-cols-3 divide-x divide-navy/10 border-y border-navy/10 bg-porcelain text-xs text-navy-deep">
-            <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><Truck aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> Nationwide delivery</li>
+            <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><Truck aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> Delivery arranged after order</li>
             <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><ShieldCheck aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> 100% authentic</li>
             <li className="flex flex-col items-center gap-2 px-2 py-4 text-center"><RotateCcw aria-hidden className="size-5 shrink-0 text-rose" strokeWidth={1.5} /> Easy returns</li>
           </ul>
@@ -425,7 +425,7 @@ export function ProductDetail({ product, hideBenefits = false }: { product: Prod
               </Disclosure>
             )}
             <Disclosure summary="Delivery & returns" summaryClassName={PDP_SUMMARY}>
-              <p>{FREE_STANDARD_DELIVERY} (5–7 business days). Express delivery is <Money amount={3000} /> (2–3 business days), chosen at checkout.</p>
+              <p>{DELIVERY_NOTE}</p>
               <p className="mt-2">
                 See our <Link href="/shipping" prefetch={false} className="text-navy underline underline-offset-4">shipping</Link> and{" "}
                 <Link href="/returns" prefetch={false} className="text-navy underline underline-offset-4">returns</Link> pages for details.

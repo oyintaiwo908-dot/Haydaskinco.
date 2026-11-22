@@ -13,7 +13,7 @@ import { animateOut, useFlip } from "@/components/motion/use-flip"
 import { bareDealId, isDealCartId } from "@/lib/deals"
 import { getProductMoq, getUnitPriceForQuantity } from "@/lib/products"
 import { cn } from "@/lib/utils"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { DELIVERY_NOTE } from "@/lib/storefront-copy"
 
 /**
  * Cart as a native <dialog> side sheet (focus trap, Escape, focus return, scroll lock).
@@ -44,7 +44,7 @@ export function CartDrawer() {
           <span className="font-serif text-3xl text-navy-deep tabular-nums"><MoneyTicker amount={subtotal} /></span>
         </div>
         <p className="text-sm text-muted-foreground">
-          {FREE_STANDARD_DELIVERY}. Express is <Money amount={3000} /> at checkout.
+          {DELIVERY_NOTE}
         </p>
         {hasStockIssues ? (
           // Real disabled control; the reason is the full-contrast alert above it.
@@ -125,7 +125,7 @@ export function CartDrawer() {
                 className="cart-line flex gap-4 py-5"
                 style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
               >
-                <Link href={href} prefetch={false} onClick={closeCart} className={cn("relative aspect-4/5 w-20 shrink-0 overflow-hidden bg-porcelain", unavailable && "opacity-50")} tabIndex={-1} aria-hidden>
+                <Link href={href} prefetch={false} onClick={closeCart} className={cn("product-stage relative aspect-4/5 w-20 shrink-0 overflow-hidden", unavailable && "opacity-50")} tabIndex={-1} aria-hidden>
                   {isDealPlaceholder ? (
                     <span className="flex size-full items-center justify-center text-navy/60">
                       <ShoppingBag className="size-7" strokeWidth={1.5} />

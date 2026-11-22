@@ -16,3 +16,13 @@ teardown("server never contacted a non-local host, and the guard was active", ()
   const blocked = fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim() : ""
   expect(blocked, "outbound requests blocked by the network guard").toBe("")
 })
+
+teardown("dev mock server (holding + admin specs) never contacted a non-local host", () => {
+  const devDist = path.join(process.cwd(), ".next-e2e-dev")
+  const mark = path.join(devDist, "network-guard.mark")
+  const log = path.join(devDist, "network-guard.log")
+  expect(fs.existsSync(mark), "network guard never loaded into the dev server").toBe(true)
+  expect(fs.readFileSync(mark, "utf8")).toContain("phase=dev")
+  const blocked = fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim() : ""
+  expect(blocked, "outbound requests blocked by the network guard (dev)").toBe("")
+})

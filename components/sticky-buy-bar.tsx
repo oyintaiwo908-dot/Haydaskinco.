@@ -59,7 +59,7 @@ export function StickyBuyBar({
     >
       <div className="mx-auto flex max-w-xl items-center gap-3 lg:max-w-7xl lg:gap-5">
         {image && (
-          <span className="relative hidden size-12 shrink-0 overflow-hidden bg-porcelain lg:block">
+          <span className="product-stage relative hidden size-12 shrink-0 overflow-hidden lg:block">
             <Image src={image} alt="" fill sizes="48px" className="object-cover" />
           </span>
         )}

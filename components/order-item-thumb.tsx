@@ -45,11 +45,11 @@ export function OrderItemThumb({
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden border border-border",
+        "relative shrink-0 overflow-hidden",
         box,
         showIcon
-          ? "flex items-center justify-center border-gold/30 bg-lavender"
-          : "bg-muted",
+          ? "flex items-center justify-center border border-gold/30 bg-lavender"
+          : "product-stage",
         className,
       )}
     >

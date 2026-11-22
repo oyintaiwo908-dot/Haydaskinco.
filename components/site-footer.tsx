@@ -32,7 +32,7 @@ const COLUMNS = [
     links: [
       { label: "Contact us", href: "/contact" },
       { label: "FAQs", href: "/faq" },
-      { label: "Shipping & delivery", href: "/shipping" },
+      { label: "Delivery", href: "/shipping" },
       { label: "Returns", href: "/returns" },
       { label: "Track my order", href: "/account/orders" },
     ],

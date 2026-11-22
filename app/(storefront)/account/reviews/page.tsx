@@ -105,7 +105,7 @@ export default function AccountReviewsPage() {
           {reviews.map(review => (
             <div key={review.id} className="border border-border">
               <div className="flex items-center gap-3 border-b border-border px-5 py-3 bg-secondary">
-                <div className="relative size-10 shrink-0 overflow-hidden border border-border bg-muted">
+                <div className="product-stage relative size-10 shrink-0 overflow-hidden">
                   <Image
                     src={review.productImage || "/placeholder.svg"}
                     alt={review.productName || "Product"}

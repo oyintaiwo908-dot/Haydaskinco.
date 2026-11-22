@@ -60,6 +60,9 @@ const nextConfig = {
   ...(process.env.DEV_ALLOWED_ORIGINS
     ? { allowedDevOrigins: process.env.DEV_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean) }
     : {}),
+  // Test only (set by e2e/server.mjs for its mock `next dev`): no Turbopack disk cache, so the
+  // dev server stops writing in the background while the perf project measures frame rates.
+  ...(process.env.E2E_DEV_NO_FS_CACHE === "1" ? { experimental: { turbopackFileSystemCacheForDev: false } } : {}),
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }]
   },

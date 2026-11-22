@@ -71,7 +71,7 @@ export default function ReturnsPage() {
 
         <nav className="mt-14 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-6 text-[11px] font-light uppercase tracking-[0.14em] text-muted-foreground">
           <Link href="/faq" className="hover:text-foreground">FAQs</Link>
-          <Link href="/shipping" className="hover:text-foreground">Shipping</Link>
+          <Link href="/shipping" className="hover:text-foreground">Delivery</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>
           <Link href="/terms" className="hover:text-foreground">Terms</Link>
         </nav>

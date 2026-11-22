@@ -8,10 +8,12 @@ import { type Journal } from "@/lib/journals"
 import { getAllJournals, deleteJournal } from "@/lib/supabase/journals"
 import { revalidateJournal } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 
 export default function AdminJournalsPage() {
   const [articles, setArticles] = useState<Journal[]>([])
   const [loading, setLoading] = useState(true)
+  useAdminScrollRestore(!loading)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -21,8 +23,12 @@ export default function AdminJournalsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">("all")
+  // Search and filter live in the URL so returning from an edit reopens this view.
+  const [query, setQuery] = useAdminListParams({ q: "", status: "all" })
+  const search = query.q
+  const setSearch = (v: string) => setQuery({ q: v })
+  const statusFilter = query.status as "all" | "published" | "draft"
+  const setStatusFilter = (v: "all" | "published" | "draft") => setQuery({ status: v })
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const filtered = articles.filter((a) => {

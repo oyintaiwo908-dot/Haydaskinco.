@@ -24,7 +24,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <AdminAuthProvider>
-      <div className="admin-shell">
+      {/* .admin-theme: the admin's pre-revamp look (globals.css), scoped to the admin only. */}
+      <div className="admin-shell admin-theme">
         <AdminSidebar />
         <div className="admin-main">{children}</div>
       </div>

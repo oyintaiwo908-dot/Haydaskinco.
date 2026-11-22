@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { ALL_SKIN_TYPES, resolveCatalogLabel } from "@/lib/catalog"
 import { getCategoryTree, resolveCategoryName, type CategorySection } from "@/lib/supabase/categories"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
 
 export type ShopHeadingText = { eyebrow: string; title: string; description: string }
 
@@ -39,44 +38,44 @@ function resolveHeading(
 
   if (named.length > 1) {
     const title = named.join(" · ")
-    return { eyebrow: "Shop", title, description: `${title}. ${FREE_STANDARD_DELIVERY}.` }
+    return { eyebrow: "Shop", title, description: `${title} from HAYDA SKINCo.` }
   }
   if (categoryName) {
     return {
       eyebrow: "Shop",
       title: categoryName,
-      description: `${categoryName} from HAYDA SKINCo. ${FREE_STANDARD_DELIVERY}.`,
+      description: `${categoryName} from HAYDA SKINCo.`,
     }
   }
   if (brandName) {
     return {
       eyebrow: "Shop by brand",
       title: brandName,
-      description: `Authentic ${brandName} products. ${FREE_STANDARD_DELIVERY}.`,
+      description: `Authentic ${brandName} products.`,
     }
   }
   if (skinName) {
     return {
       eyebrow: "Shop by skin type",
       title: skinName,
-      description: `Skincare for ${skinName.toLowerCase()}. ${FREE_STANDARD_DELIVERY}.`,
+      description: `Skincare for ${skinName.toLowerCase()}.`,
     }
   }
   if (onSale) {
-    return { eyebrow: "Offers", title: "Sale", description: `Discounted skincare, while stocks last. ${FREE_STANDARD_DELIVERY}.` }
+    return { eyebrow: "Offers", title: "Sale", description: `Discounted skincare, while stocks last.` }
   }
   if (filter === "concerns") {
     return {
       eyebrow: "Discover",
       title: "Shop by Concern",
-      description: `Choose a skin concern and see the products made for it. ${FREE_STANDARD_DELIVERY}.`,
+      description: `Choose a skin concern and see the products made for it.`,
     }
   }
   if (filter === "ingredients") {
     return {
       eyebrow: "Discover",
       title: "Shop by Ingredient",
-      description: `Choose an ingredient and see the products that use it. ${FREE_STANDARD_DELIVERY}.`,
+      description: `Choose an ingredient and see the products that use it.`,
     }
   }
   return fallback

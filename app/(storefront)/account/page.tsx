@@ -302,7 +302,7 @@ export default function AccountPage() {
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
             {favorites.slice(0, 4).map(product => (
               <Link key={product.id} href={`/product/${product.id}`} className="group shrink-0 w-36">
-                <div className="relative aspect-4/5 overflow-hidden border border-border bg-muted group-hover:border-gold/60 transition-colors">
+                <div className="product-stage relative aspect-4/5 overflow-hidden">
                   <Image
                     src={product.image || "/placeholder.svg"}
                     alt={product.name}

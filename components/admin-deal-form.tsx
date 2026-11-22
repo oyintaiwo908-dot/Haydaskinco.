@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Check, Plus, Save, Search, Trash2, Upload, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -15,6 +14,7 @@ import { getAllProducts } from "@/lib/supabase/products"
 import { saveDeal } from "@/lib/supabase/deals"
 import { revalidateDeals } from "@/app/actions/revalidate"
 import { TagPicker } from "@/components/tag-picker"
+import { adminReturnUrl, AdminBackLink } from "@/components/admin-list-state"
 
 type ImageEntry = { preview: string; file?: File }
 
@@ -292,7 +292,7 @@ export function AdminDealForm({ deal }: { deal?: Deal }) {
       const refreshed = await revalidateDeals(slug)
       if (!refreshed.ok) console.warn("[deal] storefront refresh skipped:", refreshed.error)
       setSaved(true)
-      setTimeout(() => router.push("/admin/deals"), 800)
+      setTimeout(() => router.push(adminReturnUrl("/admin/deals"), { scroll: false }), 800)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Save failed.")
       setSaving(false)
@@ -303,12 +303,12 @@ export function AdminDealForm({ deal }: { deal?: Deal }) {
     <form onSubmit={handleSubmit} className="admin-page">
       <div className="admin-page-header">
         <div className="flex items-center gap-4">
-          <Link
-            href="/admin/deals"
+          <AdminBackLink
+            section="/admin/deals"
             className="flex size-9 items-center justify-center border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="size-4" />
-          </Link>
+          </AdminBackLink>
           <div>
             <h1 className="font-serif text-2xl font-medium">
               {isEdit ? "Edit Deal" : "New Deal"}

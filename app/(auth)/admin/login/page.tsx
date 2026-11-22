@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
       await new Promise(r => setTimeout(r, 800))
       if (email === "admin@haydaskinco.com" && password === "password") {
         saveAdminSession({ email, name: "Admin", role: "admin", signedInAt: Date.now() })
-        router.push("/admin/dashboard")
+        router.push("/admin")
       } else {
         setError("Invalid email or password.")
         setLoading(false)
@@ -99,7 +99,7 @@ export default function AdminLoginPage() {
       return
     }
 
-    router.push("/admin/dashboard")
+    router.push("/admin")
   }
 
   return (

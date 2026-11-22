@@ -8,6 +8,7 @@ import { type Deal } from "@/lib/deals"
 import { getAllDeals, deleteDeal, toggleDealStatus } from "@/lib/supabase/deals"
 import { revalidateDeals } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 
 /** Storefront deal pages cache for up to 1h; refresh them after a change (non-blocking). */
 function refreshStorefrontDeals(id: string) {
@@ -25,6 +26,7 @@ const STATUS_STYLE: Record<Deal["status"], { label: string; cls: string }> = {
 export default function AdminDealsPage() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [loading, setLoading] = useState(true)
+  useAdminScrollRestore(!loading)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -34,8 +36,12 @@ export default function AdminDealsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | Deal["status"]>("all")
+  // Search and filter live in the URL so returning from an edit reopens this view.
+  const [query, setQuery] = useAdminListParams({ q: "", status: "all" })
+  const search = query.q
+  const setSearch = (v: string) => setQuery({ q: v })
+  const statusFilter = query.status as "all" | Deal["status"]
+  const setStatusFilter = (v: "all" | Deal["status"]) => setQuery({ status: v })
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const filtered = deals.filter(d => {

@@ -763,6 +763,41 @@ export async function saveProduct(
   return data.id
 }
 
+/** Same rules the full product form applies when it saves (admin-product-form → saveProduct). */
+export function normaliseQuickFields(input: { discountPct: string | number; stock: string | number }) {
+  const discountPct = Math.min(100, Math.max(0, Math.round(Number(input.discountPct) || 0)))
+  const stockNumber = Math.floor(Number(input.stock))
+  return { discountPct, stock: Number.isFinite(stockNumber) ? stockNumber : NaN }
+}
+
+/**
+ * Quick edit from the admin products list: discount % and stock only. Uses the same client
+ * and table as saveProduct (so store-manager RLS applies), writes only these columns, and
+ * never touches price, variants or anything else. Stock and discount are product-level in this
+ * schema (variants carry a label and price only), so one value of each covers every size.
+ */
+export async function updateProductQuickFields(
+  id: string,
+  input: { discountPct: string | number; stock: string | number },
+): Promise<{ discountPct: number; stock: number }> {
+  const { discountPct, stock } = normaliseQuickFields(input)
+  if (!Number.isInteger(stock) || stock < 0) throw new Error("Stock must be a whole number, 0 or more.")
+  const supabase = createAdminBrowserClient()
+  if (!supabase) {
+    console.warn("Supabase not configured — quick edit not persisted.")
+    return { discountPct, stock }
+  }
+  const { data, error } = await supabase
+    .from("products")
+    .update({ discount_pct: discountPct, stock, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("discount_pct, stock")
+    .single()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error("This product could not be updated (no permission or it no longer exists).")
+  return { discountPct: Number(data.discount_pct) || 0, stock: Number(data.stock) || 0 }
+}
+
 export async function deleteProduct(id: string): Promise<void> {
   const supabase = createAdminBrowserClient()
   if (!supabase) return

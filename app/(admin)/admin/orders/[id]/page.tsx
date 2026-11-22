@@ -17,6 +17,7 @@ import { getOrderByReference } from "@/lib/supabase/orders"
 import { OrderItemThumb } from "@/components/order-item-thumb"
 import { allowedStatusTargets, requestStatusChange } from "@/components/admin-order-status"
 import { cn } from "@/lib/utils"
+import { AdminBackLink } from "@/components/admin-list-state"
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", minimumFractionDigits: 0 }).format(n)
@@ -108,12 +109,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     <div className="admin-page" onClick={() => setStatusOpen(false)}>
       <div className="admin-page-header sm:items-start lg:items-center">
         <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-          <Link
-            href="/admin/orders"
+          <AdminBackLink
+            section="/admin/orders"
             className="flex size-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-          </Link>
+          </AdminBackLink>
           <div className="min-w-0">
             <h1 className="font-serif text-lg font-medium font-mono sm:text-2xl truncate">{order.id}</h1>
             <p className="text-xs font-light text-muted-foreground">{formatDateTime(order.createdAt)}</p>
@@ -225,7 +226,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </ul>
             <div className="border-t border-border px-6 py-4 space-y-1.5">
               <Row label="Subtotal" value={formatCurrency(order.subtotal)} />
-              <Row label="Shipping" value={order.shippingCost === 0 ? "Free" : formatCurrency(order.shippingCost)} />
+              <Row label="Delivery" value={order.shippingCost === 0 ? "Not charged at checkout" : formatCurrency(order.shippingCost)} />
               <Row label="Tax" value={formatCurrency(order.tax)} />
               <Row label="Total" value={formatCurrency(order.total)} bold />
             </div>
@@ -261,9 +262,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <br />
               {order.shippingAddress.country}
             </p>
-            <p className="text-xs font-light text-muted-foreground pt-1 capitalize">
-              {order.shippingMethod} shipping
-            </p>
+            {order.shippingCost > 0 && (
+              <p className="text-xs font-light text-muted-foreground pt-1 capitalize">
+                {order.shippingMethod} shipping (legacy order)
+              </p>
+            )}
           </div>
 
           <div className="border border-border p-5 space-y-2">

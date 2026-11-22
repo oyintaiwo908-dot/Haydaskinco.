@@ -12,6 +12,11 @@
 //    downloads and self-hosts the fonts); at runtime nothing external is allowed.
 //
 // Usage: node e2e/server.mjs   (PORT, E2E_SKIP_BUILD=1 to reuse an existing .next-e2e build)
+//
+// E2E_MODE=dev runs `next dev` instead (no build), in MOCK mode, into .next-e2e-dev. It serves
+// the specs that need what a production mock build cannot show: the admin UI (mock admin
+// sessions only exist outside production) and the holding page (NEXT_PUBLIC_SITE_HOLDING is
+// read at build time, so it needs its own server): E2E_HOLDING=1, E2E_PREVIEW_KEY=<key>.
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -19,7 +24,8 @@ import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const port = process.env.PORT || "3123"
-const distDir = ".next-e2e"
+const devMode = process.env.E2E_MODE === "dev"
+const distDir = devMode ? ".next-e2e-dev" : ".next-e2e"
 const distPath = path.join(root, distDir)
 const guard = path.join(root, "e2e/support/network-guard.cjs")
 const networkLog = path.join(distPath, "network-guard.log")
@@ -64,6 +70,8 @@ const blank = new Set([
   "RESEND_API_KEY",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
+  "NEXT_PUBLIC_SITE_HOLDING",
+  "SITE_PREVIEW_KEY",
 ])
 const baseEnv = { ...process.env }
 for (const name of blank) baseEnv[name] = ""
@@ -77,9 +85,45 @@ Object.assign(baseEnv, {
 })
 
 const nextBin = path.join(root, "node_modules/next/dist/bin/next")
+
+if (devMode) {
+  fs.rmSync(distPath, { recursive: true, force: true })
+  fs.mkdirSync(distPath, { recursive: true })
+  // `next dev` with a custom distDir rewrites these tracked files; put them back on exit.
+  const tracked = ["next-env.d.ts", "tsconfig.json"].map(f => path.join(root, f))
+  const snapshot = new Map(tracked.filter(f => fs.existsSync(f)).map(f => [f, fs.readFileSync(f, "utf8")]))
+  const restore = () => {
+    for (const [file, contents] of snapshot) {
+      try {
+        if (fs.readFileSync(file, "utf8") !== contents) fs.writeFileSync(file, contents)
+      } catch {}
+    }
+  }
+  const dev = spawn(process.execPath, [nextBin, "dev", "-p", port], {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...baseEnv,
+      NEXT_PUBLIC_SITE_HOLDING: process.env.E2E_HOLDING ?? "",
+      SITE_PREVIEW_KEY: process.env.E2E_PREVIEW_KEY ?? "",
+      E2E_PHASE: "dev",
+      E2E_DEV_NO_FS_CACHE: "1",
+      // next/font downloads Google Fonts on first compile in dev, and `next dev` checks the npm
+      // registry for a newer Next.js version. Nothing else may leave.
+      E2E_ALLOW_HOSTS: "fonts.googleapis.com,fonts.gstatic.com,registry.npmjs.org",
+    },
+  })
+  const stop = () => dev.kill("SIGTERM")
+  process.on("SIGINT", stop)
+  process.on("SIGTERM", stop)
+  dev.on("exit", code => {
+    restore()
+    process.exit(code ?? 0)
+  })
+}
 const skipBuild = process.env.E2E_SKIP_BUILD === "1" && fs.existsSync(path.join(distPath, "BUILD_ID"))
 
-if (!skipBuild) {
+if (!devMode && !skipBuild) {
   fs.rmSync(distPath, { recursive: true, force: true })
   // `next build` with a custom distDir rewrites these tracked files to point at .next-e2e.
   // Snapshot them and put them back so running the suite never dirties the repo.
@@ -100,8 +144,10 @@ if (!skipBuild) {
 }
 
 // Refuse to serve a build that has the real project baked in.
-const host = realSupabaseHost()
-if (host) {
+const host = devMode ? null : realSupabaseHost()
+if (devMode) {
+  // dev compiles on demand from the blanked environment; there is no build output to scan
+} else if (host) {
   const hits = []
   const walk = dir => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -124,12 +170,14 @@ if (host) {
 }
 
 // Runtime: nothing external is allowed.
-const server = spawn(process.execPath, [nextBin, "start", "-p", port], {
-  cwd: root,
-  stdio: "inherit",
-  env: { ...baseEnv, E2E_PHASE: "start", E2E_ALLOW_HOSTS: "" },
-})
-const stop = () => server.kill("SIGTERM")
-process.on("SIGINT", stop)
-process.on("SIGTERM", stop)
-server.on("exit", code => process.exit(code ?? 0))
+if (!devMode) {
+  const server = spawn(process.execPath, [nextBin, "start", "-p", port], {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...baseEnv, E2E_PHASE: "start", E2E_ALLOW_HOSTS: "" },
+  })
+  const stop = () => server.kill("SIGTERM")
+  process.on("SIGINT", stop)
+  process.on("SIGTERM", stop)
+  server.on("exit", code => process.exit(code ?? 0))
+}

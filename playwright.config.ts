@@ -8,6 +8,10 @@ import { defineConfig, devices } from "@playwright/test"
  */
 const PORT = Number(process.env.E2E_PORT || 3123)
 const baseURL = `http://localhost:${PORT}`
+// Second server: `next dev` in mock mode with the holding page on (admin UI and holding specs).
+const DEV_PORT = Number(process.env.E2E_DEV_PORT || 3124)
+const devURL = `http://localhost:${DEV_PORT}`
+export const E2E_PREVIEW_KEY = "e2e-preview-key-0001"
 
 export default defineConfig({
   testDir: "./e2e",
@@ -30,7 +34,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: [/nojs\.spec\.ts/, /reduced-motion\.spec\.ts/, /touch\.spec\.ts/, /perf\.spec\.ts/, /\.teardown\.ts/],
+      testIgnore: [/nojs\.spec\.ts/, /reduced-motion\.spec\.ts/, /touch\.spec\.ts/, /perf\.spec\.ts/, /\.teardown\.ts/, /dev-mock\//],
       teardown: "network-guard",
     },
     {
@@ -60,7 +64,18 @@ export default defineConfig({
       fullyParallel: false,
       // Tracing records a screencast of every frame, which halves the frame rate it measures.
       use: { trace: "off", screenshot: "off" },
-      dependencies: ["chromium", "no-js", "reduced-motion", "touch"],
+      // Also after dev-mock: the mock `next dev` server is busy (compiling, writing its cache)
+      // while those specs run, and that would compete with the measurement.
+      dependencies: ["chromium", "no-js", "reduced-motion", "touch", "dev-mock"],
+      teardown: "network-guard",
+    },
+    {
+      // Mock `next dev` on DEV_PORT with NEXT_PUBLIC_SITE_HOLDING=1: holding page, preview link,
+      // and the admin UI (mock admin sessions exist only outside production builds).
+      name: "dev-mock",
+      testMatch: /dev-mock\/.*\.spec\.ts/,
+      use: { baseURL: devURL },
+      timeout: 90_000,
       teardown: "network-guard",
     },
     {
@@ -68,14 +83,26 @@ export default defineConfig({
       testMatch: /network-guard\.teardown\.ts/,
     },
   ],
-  webServer: {
-    command: "node e2e/server.mjs",
-    url: baseURL,
-    env: { PORT: String(PORT) },
-    reuseExistingServer: false,
-    timeout: 600_000,
-    stdout: "pipe",
-    stderr: "pipe",
-    gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-  },
+  webServer: [
+    {
+      command: "node e2e/server.mjs",
+      url: baseURL,
+      env: { PORT: String(PORT) },
+      reuseExistingServer: false,
+      timeout: 600_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+    },
+    {
+      command: "node e2e/server.mjs",
+      url: devURL,
+      env: { PORT: String(DEV_PORT), E2E_MODE: "dev", E2E_HOLDING: "1", E2E_PREVIEW_KEY },
+      reuseExistingServer: false,
+      timeout: 600_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+    },
+  ],
 })

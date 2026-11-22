@@ -9,7 +9,7 @@ import { getActiveDeals } from "@/lib/supabase/deals"
 import { useCart } from "@/components/cart-provider"
 import { cn } from "@/lib/utils"
 import { whatsAppHref } from "@/lib/whatsapp"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { DELIVERY_SHORT } from "@/lib/storefront-copy"
 
 export default function DealsPage() {
   const [activeDeals, setActiveDeals] = useState<Deal[]>([])
@@ -32,7 +32,7 @@ export default function DealsPage() {
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {([
-            { label: FREE_STANDARD_DELIVERY },
+            { label: DELIVERY_SHORT },
             { label: "100% authentic" },
             { label: "Easy returns", href: "/returns" },
           ] as { label: string; href?: string }[]).map(b => (

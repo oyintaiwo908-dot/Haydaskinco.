@@ -10,6 +10,7 @@ import { ORDER_STATUS_META } from "@/lib/orders"
 import { cn } from "@/lib/utils"
 import { useCart } from "@/components/cart-provider"
 import { OrderItemThumb } from "@/components/order-item-thumb"
+import { DELIVERY_LINE_LABEL } from "@/lib/storefront-copy"
 
 export default function AccountOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -145,8 +146,9 @@ export default function AccountOrderDetailPage({ params }: { params: Promise<{ i
           <span>{formatPrice(order.subtotal)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="font-light text-muted-foreground">Shipping</span>
-          <span>{order.shippingCost === 0 ? "Free" : formatPrice(order.shippingCost)}</span>
+          <span className="font-light text-muted-foreground">Delivery</span>
+          {/* Delivery is quoted and paid after the order; older orders may carry a fee. */}
+          <span>{order.shippingCost === 0 ? DELIVERY_LINE_LABEL : formatPrice(order.shippingCost)}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="font-light text-muted-foreground">VAT</span>

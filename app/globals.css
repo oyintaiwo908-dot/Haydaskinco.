@@ -1622,3 +1622,66 @@ dialog.sheet.mobile-menu[open]::before {
   font-weight: inherit;
   margin-right: 0.03em;
 }
+
+/* ─── Product image stage ──────────────────────────────────────────────────
+   Every product photo (cards, rails, search, cart and checkout thumbs, PDP gallery, wholesale
+   and admin preview) sits on pure white. A hairline drawn with an inset outline (painted above
+   the photo, never tinted) keeps white packshots from melting into a white page. */
+.product-stage {
+  background-color: #ffffff;
+  outline: 1px solid rgb(31 37 56 / 0.08);
+  outline-offset: -1px;
+}
+
+/* ─── Admin theme: the admin as it rendered before the storefront revamp (9ea0dd0) ───
+   Applied by the admin and admin-auth layouts (`.admin-theme`). The storefront tokens changed
+   during the revamp; these restore the earlier values inside the admin only. Functional and
+   security changes since then are untouched. */
+.admin-theme {
+  /* ADMIN FONT: one token. 9ea0dd0's sans stack was broken (it referenced an undefined
+     variable), so every browser fell back to its default serif (Times on Mac and Windows).
+     This reproduces exactly that. To switch the admin to the intended sans, change this one
+     line to: --admin-font: var(--font-geist-sans, ui-sans-serif), ui-sans-serif, system-ui, sans-serif; */
+  --admin-font: serif;
+  font-family: var(--admin-font);
+  --primary: oklch(0.15 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --input: #F0B8C3;
+  --ring: #293049;
+}
+/* Tailwind's font-sans utility carries its own font list; inside the admin it follows the token. */
+.admin-theme .font-sans {
+  font-family: var(--admin-font);
+}
+/* Figures: the storefront forces lining figures on serif text; the admin used Cormorant's own. */
+.admin-theme .font-serif,
+.admin-theme .font-serif * {
+  font-variant-numeric: normal;
+}
+/* Placeholders were the light silver at 40% opacity. */
+.admin-theme input::placeholder,
+.admin-theme textarea::placeholder {
+  color: color-mix(in oklab, oklch(0.66 0 0) 40%, transparent);
+}
+/* Fields showed focus by darkening their border (focus:border-foreground), with no ring.
+   Buttons and links keep the accessibility focus ring. */
+.admin-theme :is(input, select, textarea):focus-visible:not([data-focus="custom"]) {
+  outline: none;
+  box-shadow: none;
+}
+/* The storefront reserves a scrollbar gutter; the admin shell scrolls inside itself. */
+html:has(.admin-theme) {
+  scrollbar-gutter: auto;
+}
+/* Quick-edit modal in the admin: plain bordered panel like the admin's confirmation dialogs. */
+dialog.sheet.admin-quick-edit {
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  font-family: var(--admin-font, serif);
+}
+dialog.sheet.admin-quick-edit h2 {
+  color: var(--foreground);
+  font-weight: 500;
+}

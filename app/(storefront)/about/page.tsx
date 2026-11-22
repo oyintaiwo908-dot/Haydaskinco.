@@ -28,8 +28,8 @@ const values = [
   },
   {
     icon: Heart,
-    title: "Nationwide Delivery",
-    body: "Order from anywhere in Nigeria and receive your skincare fast, safely packaged and tracked.",
+    title: "Delivery across Nigeria",
+    body: "Order from anywhere in Nigeria. After your order, our team contacts you to arrange delivery.",
   },
 ]
 

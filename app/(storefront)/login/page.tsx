@@ -22,9 +22,9 @@ function BrandPanel() {
           </p>
         </li>
         <li>
-          <p className="font-serif text-3xl font-medium leading-tight">Free standard delivery</p>
+          <p className="font-serif text-3xl font-medium leading-tight">Secure checkout</p>
           <p className="mt-2 max-w-xs text-sm font-light leading-relaxed text-gold-foreground/80">
-            Nationwide, in 5–7 business days.
+            Pay safely with Paystack.
           </p>
         </li>
         <li>
@@ -66,7 +66,7 @@ export default function LoginPage() {
   // Already signed in. Store managers go to the admin area; customers go to account.
   useEffect(() => {
     if (!ready || !session || submitLock.current) return
-    router.replace(isStoreManagerRole(session.role) ? "/admin/dashboard" : "/account")
+    router.replace(isStoreManagerRole(session.role) ? "/admin" : "/account")
   }, [ready, session, router])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -113,7 +113,7 @@ export default function LoginPage() {
             return
           }
         }
-        router.push("/admin/dashboard")
+        router.push("/admin")
       } else {
         router.push("/account")
       }
@@ -135,7 +135,7 @@ export default function LoginPage() {
         <div className="flex min-w-0 flex-1 flex-col px-5 md:px-8 lg:px-14">
           <div className="mx-auto my-auto w-full max-w-md py-12">
             <p className="mb-8 text-balance text-center text-[11px] font-light uppercase leading-relaxed tracking-[0.16em] text-muted-foreground md:hidden">
-              HAYDA SKINCo. · Authentic products · Free standard delivery · Rewards
+              HAYDA SKINCo. · Authentic products · Secure checkout · Rewards
             </p>
 
             <div className="mb-8 text-center">

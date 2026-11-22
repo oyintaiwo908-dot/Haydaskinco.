@@ -49,7 +49,7 @@ function tierFor(balance: number) {
 export const REWARD_CATALOG = [
   { id: "r1", label: "₦500 off your next order", cost: 500, discountNgn: 500 },
   { id: "r2", label: "₦1,000 off your next order", cost: 1000, discountNgn: 1000 },
-  { id: "r3", label: "₦250 off (free delivery credit)", cost: 250, discountNgn: 250 },
+  { id: "r3", label: "₦250 off your order", cost: 250, discountNgn: 250 },
   { id: "r4", label: "₦2,000 off your next order", cost: 2000, discountNgn: 2000 },
   { id: "r5", label: "₦800 off your next order", cost: 800, discountNgn: 800 },
   { id: "r6", label: "₦1,500 off your next order", cost: 1500, discountNgn: 1500 },

@@ -1,6 +1,9 @@
 import { cache } from "react"
 import { redirect } from "next/navigation"
 import { createAdminServerClient } from "@/lib/supabase/server"
+import { ADMIN_HOME, adminHomeFor } from "@/lib/admin-routes"
+
+export { ADMIN_HOME, adminHomeFor }
 
 export type StoreRole = "admin" | "sub_admin"
 
@@ -34,7 +37,7 @@ export const getAdminSession = cache(async () => {
   return { configured: true as const, supabase, user, profile: profile ?? null }
 })
 
-/** Full admins only. Sub admins are sent back to the dashboard. */
+/** Full admins only (Dashboard, Users, Inbox, Deals). Sub admins go to their home section. */
 export async function requireFullAdmin() {
   const { configured, user, profile } = await getAdminSession()
   if (!configured) return
@@ -44,7 +47,7 @@ export async function requireFullAdmin() {
   if (!profile || profile.is_suspended || !isStoreRole(profile.role)) {
     redirect(profile?.is_suspended ? "/admin/login?suspended=1" : "/admin/login")
   }
-  if (profile.role !== "admin") redirect("/admin/dashboard")
+  if (profile.role !== "admin") redirect(ADMIN_HOME.sub_admin)
 }
 
 /**

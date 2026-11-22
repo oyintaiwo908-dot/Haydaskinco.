@@ -47,8 +47,14 @@ test.describe("design: navigation and product", () => {
     await expect(bar).toHaveAttribute("data-buy-bar", "hidden")
     await waitForHydration(page.getByRole("main").getByRole("button", { name: "Add to cart", exact: true }).first())
     // Scroll the add-to-cart row well above the viewport (instant, so the observer sees it).
-    await page.evaluate(() => window.scrollTo({ top: 1600, behavior: "instant" }))
-    await expect(bar).toHaveAttribute("data-buy-bar", "visible")
+    // Re-applied while polling: under load the page can still be growing (or the observer still
+    // attaching) when the first scroll lands, which clamps it short of the row.
+    await expect
+      .poll(async () => {
+        await page.evaluate(() => window.scrollTo({ top: 1600, behavior: "instant" }))
+        return bar.getAttribute("data-buy-bar")
+      })
+      .toBe("visible")
     await expect(bar.getByRole("button", { name: "Add to cart" })).toBeVisible()
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }))
     await expect(bar).toHaveAttribute("data-buy-bar", "hidden")
@@ -129,5 +135,24 @@ test.describe("design: serif figures", () => {
     await expect(summary).toBeVisible()
     const total = summary.locator("span.font-serif").last()
     expect(await total.evaluate(lining)).toContain("lining-nums")
+  })
+})
+
+test.describe("design: white product stage", () => {
+  const bg = (el: Element) => getComputedStyle(el).backgroundColor
+
+  test("product photos sit on white: cards, PDP gallery, cart thumbnails", async ({ page }) => {
+    await page.goto("/shop")
+    // After ShopGrid takes over (the server fallback grid is replaced on hydration).
+    await expect(page.locator("#shop-sort")).toBeAttached()
+    const card = page.locator("main [data-card-media]").first()
+    await expect(card).toBeVisible()
+    expect(await card.evaluate(bg)).toBe("rgb(255, 255, 255)")
+
+    await addPdpItemToCart(page)
+    expect(await page.locator(".gallery-track").evaluate(bg)).toBe("rgb(255, 255, 255)")
+    await page.getByRole("button", { name: "Cart, 1 item" }).click()
+    const thumb = page.getByRole("dialog", { name: /Your cart/ }).locator(".product-stage").first()
+    expect(await thumb.evaluate(bg)).toBe("rgb(255, 255, 255)")
   })
 })

@@ -222,7 +222,7 @@ export function SearchModal() {
                   <li key={product.id} style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}>
                     {/* prefetch off: up to 40 results per keystroke would each prefetch a product page (Vercel CPU budget). */}
                     <Link href={`/product/${product.id}`} prefetch={false} onClick={close} className="group block">
-                      <span className="relative block aspect-4/5 overflow-hidden bg-porcelain">
+                      <span className="product-stage relative block aspect-4/5 overflow-hidden">
                         <Image
                           src={product.image || "/placeholder.svg"}
                           alt=""

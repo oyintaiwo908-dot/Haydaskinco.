@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/brands"
 import { revalidateBrands } from "@/app/actions/revalidate"
 import { cn } from "@/lib/utils"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 
 /** Storefront brand pages cache for up to 1h; refresh them after a change (non-blocking). */
 function refreshStorefrontBrands() {
@@ -22,7 +23,10 @@ function refreshStorefrontBrands() {
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
+  useAdminScrollRestore(!loading)
+  const [query, setQuery] = useAdminListParams({ q: "" })
+  const search = query.q
+  const setSearch = (v: string) => setQuery({ q: v })
   const [name, setName] = useState("")
   const [tagline, setTagline] = useState("")
   const [saving, setSaving] = useState(false)

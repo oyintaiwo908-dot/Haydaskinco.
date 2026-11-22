@@ -3,12 +3,15 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 import { readJsonObject, stringField, ValidationError } from "@/lib/api-guard"
+import { SITE_HOLDING, holdingResponse } from "@/lib/holding"
 
 function invalid(message = "Invalid promo code.", status = 200) {
   return NextResponse.json({ valid: false, message }, { status })
 }
 
 export async function POST(request: Request) {
+  // Holding page until launch: no orders or form posts from stale tabs (lib/holding.ts).
+  if (SITE_HOLDING) return holdingResponse()
   try {
     const ip = clientIp(request)
     const limited = await rateLimit(`promo:${ip}`, 30, 60_000)

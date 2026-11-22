@@ -4,8 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWholesaleNotify } from "@/lib/email/send"
 import { clientIp, rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 import { EMAIL_RE, errorResponse, jsonError, readJsonObject, stringField } from "@/lib/api-guard"
+import { SITE_HOLDING, holdingResponse } from "@/lib/holding"
 
 export async function POST(request: Request) {
+  // Holding page until launch: no orders or form posts from stale tabs (lib/holding.ts).
+  if (SITE_HOLDING) return holdingResponse()
   try {
     const ip = clientIp(request)
     const limited = await rateLimit(`wholesale:${ip}`, 5, 60_000)

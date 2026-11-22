@@ -1,11 +1,12 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { DELIVERY_NOTE } from "@/lib/storefront-copy"
 import { PageHeader } from "@/components/page-header"
 
 export const metadata: Metadata = {
   title: "FAQs — HAYDA SKINCo.",
   description:
-    "Answers on shipping, authenticity, Paystack payments, rewards, and tracking an order at HAYDA SKINCo.",
+    "Answers on delivery, authenticity, Paystack payments, rewards, and tracking an order at HAYDA SKINCo.",
 }
 
 const linkClass = "text-gold underline-offset-2 hover:underline"
@@ -16,20 +17,16 @@ export default function FaqPage() {
       <PageHeader
         eyebrow="Help"
         title="Frequently asked questions"
-        description="Shipping, authenticity, payment, rewards, and how to find an order in your account."
+        description="Delivery, authenticity, payment, rewards, and how to find an order in your account."
       />
 
       <div className="mx-auto max-w-3xl px-5 py-16 md:py-20 lg:px-8">
         <div className="space-y-10 text-sm font-light leading-relaxed text-foreground/85">
           <section className="space-y-3">
-            <h2 className="font-serif text-xl font-medium text-foreground">Shipping</h2>
+            <h2 className="font-serif text-xl font-medium text-foreground">Delivery</h2>
+            <p>{DELIVERY_NOTE}</p>
             <p>
-              Standard delivery is free and arrives in 5–7 business days. Express delivery is ₦3,000
-              and arrives in 2–3 business days. Both are available nationwide. You choose a method
-              at checkout.
-            </p>
-            <p>
-              <Link href="/shipping" className={linkClass}>Shipping details</Link>
+              <Link href="/shipping" className={linkClass}>Delivery details</Link>
             </p>
           </section>
 
@@ -82,7 +79,7 @@ export default function FaqPage() {
         </div>
 
         <nav className="mt-14 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-6 text-[11px] font-light uppercase tracking-[0.14em] text-muted-foreground">
-          <Link href="/shipping" className="hover:text-foreground">Shipping</Link>
+          <Link href="/shipping" className="hover:text-foreground">Delivery</Link>
           <Link href="/returns" className="hover:text-foreground">Returns</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>
         </nav>

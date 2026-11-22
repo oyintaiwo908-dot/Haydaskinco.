@@ -54,7 +54,7 @@ export default function AccountFavoritesPage() {
                 : `/product/${product.id}`
               return (
                 <article key={product.id} className="group flex flex-col">
-                  <div className="relative aspect-4/5 overflow-hidden border border-border bg-muted transition-colors group-hover:border-gold/60">
+                  <div className="product-stage relative aspect-4/5 overflow-hidden transition-colors">
                     <Link href={href} aria-label={`View ${product.name}`}>
                       <Image
                         src={product.image || "/placeholder.svg"}

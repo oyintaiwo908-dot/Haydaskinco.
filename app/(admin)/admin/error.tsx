@@ -15,7 +15,7 @@ export default function AdminError({
       description="Your changes may not have been saved. Try again; if it keeps happening, note the reference below."
       digest={error.digest}
       onRetry={reset}
-      homeHref="/admin/dashboard"
+      homeHref="/admin"
       homeLabel="Back to dashboard"
     />
   )

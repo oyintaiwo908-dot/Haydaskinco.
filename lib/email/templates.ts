@@ -1,4 +1,5 @@
 import { getSiteUrl } from "@/lib/site"
+import { DELIVERY_EMAIL_LINE } from "@/lib/storefront-copy"
 
 function escapeHtml(s: string): string {
   return s
@@ -271,13 +272,9 @@ export function orderConfirmationHtml(opts: {
   reference: string
   items: OrderEmailItem[]
   total: number
+  /** Kept for callers; delivery is no longer priced or timed at checkout. */
   shippingMethod: string
 }): string {
-  const eta =
-    opts.shippingMethod === "express"
-      ? "1–2 business days"
-      : "3–5 business days"
-
   const firstImage = opts.items.find(i => i.image)?.image || "/product-serum.png"
 
   return layout(
@@ -288,7 +285,7 @@ export function orderConfirmationHtml(opts: {
      </h2>
      ${paragraph(
        `We’ve confirmed order <strong style="color:${BRAND.ink};">${escapeHtml(opts.reference)}</strong>.
-        Estimated delivery: <strong style="color:${BRAND.ink};">${eta}</strong>.`,
+        ${escapeHtml(DELIVERY_EMAIL_LINE)}`,
      )}
      <p style="margin:24px 0 8px;font-family:system-ui,-apple-system,sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:${BRAND.ink};font-weight:700;">
        Your items
@@ -312,7 +309,7 @@ export function orderConfirmationHtml(opts: {
       hero: heroBand({
         image: firstImage,
         eyebrow: "Order confirmed",
-        title: "Your glow is on the way",
+        title: "Your order is confirmed",
         subtitle: "We’re preparing your parcel with care.",
       }),
     },
@@ -472,8 +469,7 @@ export function newsletterWelcomeHtml(opts: { promoCode: string }): string {
        You’re in
      </h2>
      ${paragraph(
-       `Thanks for subscribing. Here’s <strong style="color:${BRAND.ink};">10% off</strong> your first order —
-        because glowing skin starts with good habits (and good email).`,
+       `Thanks for subscribing. Here’s <strong style="color:${BRAND.ink};">10% off</strong> your first order.`,
      )}
      ${promoBlock(opts.promoCode, "Welcome offer")}
      ${collectionStrip([
@@ -487,7 +483,7 @@ export function newsletterWelcomeHtml(opts: { promoCode: string }): string {
       hero: heroBand({
         image: "/journal-glow.png",
         eyebrow: "Subscriber perk",
-        title: "A little glow, on us",
+        title: "A welcome gift from us",
         subtitle: "Exclusive drops, rewards, and offers in your inbox.",
       }),
     },

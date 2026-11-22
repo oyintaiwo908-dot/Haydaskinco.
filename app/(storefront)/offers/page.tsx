@@ -4,7 +4,7 @@ import Link from "next/link"
 import { countProducts } from "@/lib/supabase/products"
 import { PageHeader } from "@/components/page-header"
 import { OffersGrid } from "./offers-grid"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { DELIVERY_SHORT } from "@/lib/storefront-copy"
 
 export const metadata: Metadata = {
   title: "Offers — HAYDA SKINCo.",
@@ -29,7 +29,7 @@ export default async function OffersPage() {
       <div className="bg-foreground text-background">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-10 gap-y-2 px-5 py-4 text-center lg:px-8">
           {([
-            { text: FREE_STANDARD_DELIVERY },
+            { text: DELIVERY_SHORT },
             { text: "100% authentic" },
             { text: "Easy returns", href: "/returns" },
           ] as { text: string; href?: string }[]).map(item => (

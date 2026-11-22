@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils"
 import { formatPrice } from "@/lib/products"
 import { AnchoredMenu } from "@/components/admin-anchored-menu"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 import {
   bulkSetSuspended,
   getAdminUsers,
@@ -95,9 +96,15 @@ function UserActions({
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [roleFilter, setRoleFilter] = useState<"all" | AdminUserRole>("all")
-  const [statusFilter, setStatusFilter] = useState<"all" | AdminUserStatus>("all")
+  useAdminScrollRestore(!loading)
+  // Search and filters live in the URL so the list reopens as it was.
+  const [query, setQuery] = useAdminListParams({ q: "", role: "all", status: "all" })
+  const search = query.q
+  const setSearch = (v: string) => setQuery({ q: v })
+  const roleFilter = query.role as "all" | AdminUserRole
+  const setRoleFilter = (v: "all" | AdminUserRole) => setQuery({ role: v })
+  const statusFilter = query.status as "all" | AdminUserStatus
+  const setStatusFilter = (v: "all" | AdminUserStatus) => setQuery({ status: v })
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState<string | null>(null)

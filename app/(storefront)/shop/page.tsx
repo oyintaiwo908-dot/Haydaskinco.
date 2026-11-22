@@ -6,7 +6,6 @@ import { ShopGrid } from "@/components/shop-grid"
 import { ShopHeading, type ShopHeadingText } from "@/components/shop-heading"
 import { ShopToolbar } from "@/components/shop-toolbar"
 import { queryProducts } from "@/lib/supabase/products"
-import { FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
 
 /**
  * /shop is static with 1h ISR (admin product saves refresh it on demand).
@@ -19,7 +18,7 @@ export const revalidate = 3600
 const DEFAULT_HEADING: ShopHeadingText = {
   eyebrow: "All Products",
   title: "Shop All Skincare",
-  description: `Trusted brands. Authentic products. ${FREE_STANDARD_DELIVERY}.`,
+  description: "Trusted brands. Authentic products.",
 }
 
 export const metadata: Metadata = {

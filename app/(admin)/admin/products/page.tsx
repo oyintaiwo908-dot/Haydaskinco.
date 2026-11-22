@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Plus, Search, Edit2, Trash2, Eye, Package, RefreshCw, Archive, ArchiveRestore } from "lucide-react"
+import { Plus, Search, Edit2, Trash2, Eye, Package, RefreshCw, Archive, ArchiveRestore, SlidersHorizontal } from "lucide-react"
 import { formatPrice, productTags, type Product } from "@/lib/products"
 import { getAdminProductsPage, deleteProduct, setProductArchived } from "@/lib/supabase/products"
 import { getCategoryTree } from "@/lib/supabase/categories"
 import { AdminPagination, ADMIN_PAGE_SIZE } from "@/components/admin-pagination"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
+import { AdminProductQuickEdit } from "@/components/admin-product-quick-edit"
 import { cn } from "@/lib/utils"
 
 function productListImage(image: string | undefined) {
@@ -18,7 +20,7 @@ function productListImage(image: string | undefined) {
 function ProductRowThumb({ image }: { image: string }) {
   const src = productListImage(image)
   return (
-    <div className="relative size-10 shrink-0 overflow-hidden border border-border bg-secondary">
+    <div className="relative size-10 shrink-0 overflow-hidden border border-border bg-white">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="absolute inset-0 h-full w-full object-contain" />
@@ -31,22 +33,29 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [searchDebounced, setSearchDebounced] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("All")
-  const [archiveFilter, setArchiveFilter] = useState<"active" | "archived" | "all">("active")
+  // Page, search, filters live in the URL so returning from an edit reopens the same view.
+  const [query, setQuery] = useAdminListParams({ q: "", category: "All", archive: "active", page: "1" })
+  const searchDebounced = query.q
+  const categoryFilter = query.category
+  const archiveFilter = query.archive as "active" | "archived" | "all"
+  const page = Math.max(1, parseInt(query.page, 10) || 1)
+  const [search, setSearch] = useState(query.q)
   const [categoryOptions, setCategoryOptions] = useState<string[]>(["All"])
-  const [page, setPage] = useState(1)
+  const [quickEdit, setQuickEdit] = useState<Product | null>(null)
   const [confirm, setConfirm] = useState<{ id: string; action: "delete" | "archive" | "restore" } | null>(null)
   const [working, setWorking] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const t = setTimeout(() => setSearchDebounced(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  // Filter changes go back to page 1 (in the same URL write).
+  const setCategoryFilter = (v: string) => setQuery({ category: v, page: "1" })
+  const setArchiveFilter = (v: "active" | "archived" | "all") => setQuery({ archive: v, page: "1" })
+  const setPage = (n: number) => setQuery({ page: String(n) })
 
-  useEffect(() => { setPage(1) }, [searchDebounced, categoryFilter, archiveFilter])
+  useEffect(() => {
+    if (search === query.q) return
+    const t = setTimeout(() => setQuery({ q: search, page: "1" }), 300)
+    return () => clearTimeout(t)
+  }, [search, query.q, setQuery])
 
   useEffect(() => {
     getCategoryTree().then(tree => {
@@ -70,6 +79,11 @@ export default function AdminProductsPage() {
   }, [searchDebounced, categoryFilter, archiveFilter, page])
 
   useEffect(() => { void load() }, [load])
+  useAdminScrollRestore(!loading)
+
+  function applyQuickEdit(id: string, values: { discountPct: number; stock: number }) {
+    setProducts(prev => prev.map(p => (p.id === id ? { ...p, discountPct: values.discountPct, stock: values.stock } : p)))
+  }
 
   async function confirmAction() {
     if (!confirm) return
@@ -226,6 +240,9 @@ export default function AdminProductsPage() {
                         </td>
                         <td className="px-3 py-2">
                           <span className="text-sm font-medium">{formatPrice(product.price)}</span>
+                          {product.discountPct ? (
+                            <span className="ml-1.5 text-[10px] font-medium text-destructive">−{product.discountPct}%</span>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2">
                           {productTags(product).length > 0 ? (
@@ -267,6 +284,14 @@ export default function AdminProductsPage() {
                             >
                               <Eye className="size-4" />
                             </Link>
+                            <button
+                              type="button"
+                              onClick={() => setQuickEdit(product)}
+                              className="flex size-8 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                              aria-label={`Quick edit discount and stock for ${product.name}`}
+                            >
+                              <SlidersHorizontal className="size-4" />
+                            </button>
                             <Link
                               href={`/admin/products/${product.id}/edit`}
                               className="flex size-8 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
@@ -321,7 +346,15 @@ export default function AdminProductsPage() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Link href={`/admin/products/${product.id}/edit`} className="text-muted-foreground hover:text-foreground">
+                      <button
+                        type="button"
+                        onClick={() => setQuickEdit(product)}
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label={`Quick edit discount and stock for ${product.name}`}
+                      >
+                        <SlidersHorizontal className="size-4" />
+                      </button>
+                      <Link href={`/admin/products/${product.id}/edit`} className="text-muted-foreground hover:text-foreground" aria-label="Edit product">
                         <Edit2 className="size-4" />
                       </Link>
                       <button
@@ -351,6 +384,8 @@ export default function AdminProductsPage() {
           className="mt-6"
         />
       </div>
+
+      <AdminProductQuickEdit product={quickEdit} onClose={() => setQuickEdit(null)} onSaved={applyQuickEdit} />
 
       {/* Delete confirmation modal */}
       {confirm && (

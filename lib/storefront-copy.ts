@@ -1,17 +1,28 @@
 /**
- * Shared storefront marketing copy.
+ * Shared storefront copy: the one source for delivery wording.
  *
- * Standard shipping is free (5–7 business days). Express is ₦3,000 (2–3 business days).
- * Do not add spend thresholds or same-day dispatch.
+ * Owner decision: delivery is NOT free and is not charged at checkout. Checkout takes payment
+ * for the products only (plus VAT); delivery is quoted and paid separately after the order,
+ * and the team contacts the customer to arrange it. Do not promise a fee, a timeframe, a
+ * carrier or free delivery anywhere. Change the wording here, not in the pages.
  *
- * Exports used by the announcement bar and footer:
- * - FREE_STANDARD_DELIVERY
- * - ANNOUNCEMENT_MESSAGES
- * - SOCIAL_URLS
- * - SOCIAL_LINKS
+ * Exports:
+ * - DELIVERY_SHORT          short line for banners, cards and summaries
+ * - DELIVERY_NOTE           full sentence shown before payment and on the review step
+ * - DELIVERY_LINE_LABEL     order-summary line value where a shipping price used to be
+ * - DELIVERY_EMAIL_LINE     order-confirmation email sentence
+ * - ANNOUNCEMENT_MESSAGES   rotating announcement bar
+ * - SOCIAL_URLS / SOCIAL_LINKS
  */
 
-export const FREE_STANDARD_DELIVERY = "Free standard delivery nationwide"
+export const DELIVERY_SHORT = "Delivery arranged after your order"
+
+export const DELIVERY_NOTE =
+  "Delivery is not included in this payment. It is quoted and paid separately after your order, and our team will contact you to arrange it."
+
+export const DELIVERY_LINE_LABEL = "Arranged after order"
+
+export const DELIVERY_EMAIL_LINE = "Our team will be in touch to arrange delivery."
 
 export const SOCIAL_URLS = {
   instagram: "https://instagram.com/haydaskinco",
@@ -26,8 +37,9 @@ export const SOCIAL_LINKS = [
 ]
 
 export const ANNOUNCEMENT_MESSAGES = [
-  FREE_STANDARD_DELIVERY,
-  "Pay securely with Paystack",
+  // Shown until launch; delete this line when the site is finished.
+  "Launching soon. We're still working on the site",
   "Authentic products",
+  "Pay securely with Paystack",
   "Combo deals",
 ] as const

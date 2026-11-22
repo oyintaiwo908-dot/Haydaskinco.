@@ -8,6 +8,9 @@ import {
 } from "recharts"
 import { TrendingUp, TrendingDown, ShoppingBag, DollarSign, Users, Package, ArrowUpRight } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useAdminAuth } from "@/components/admin-auth-provider"
+import { ADMIN_HOME } from "@/lib/admin-routes"
 import { cn } from "@/lib/utils"
 import {
   MONTH_RANGE_OPTIONS,
@@ -85,6 +88,13 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function DashboardPage() {
+  // Server-side the dashboard layout already sends sub admins to Products; this covers local
+  // mock mode, where the role only exists in the browser session.
+  const { session } = useAdminAuth()
+  const router = useRouter()
+  useEffect(() => {
+    if (session?.role === "sub_admin") router.replace(ADMIN_HOME.sub_admin)
+  }, [session?.role, router])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [months, setMonths] = useState<MonthRange>(1)

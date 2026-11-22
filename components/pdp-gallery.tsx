@@ -143,7 +143,7 @@ export function PdpGallery({
                 aria-label={`Show image ${i + 1} of ${images.length}`}
                 aria-current={i === active ? "true" : undefined}
                 className={cn(
-                  "relative block aspect-4/5 w-full overflow-hidden bg-porcelain outline-offset-2 transition-[box-shadow,opacity] duration-300",
+                  "product-stage relative block aspect-4/5 w-full overflow-hidden transition-[box-shadow,opacity] duration-300",
                   i === active ? "ring-1 ring-navy" : "opacity-70 ring-1 ring-transparent hover:opacity-100 hover:ring-navy/40",
                 )}
               >
@@ -214,7 +214,7 @@ export function PdpGallery({
               if (e.pointerType === "mouse" && !drag.current) resetZoom()
             }}
             className={cn(
-              "gallery-track no-scrollbar flex aspect-4/5 snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-porcelain",
+              "gallery-track product-stage no-scrollbar flex aspect-4/5 snap-x snap-mandatory overflow-x-auto overscroll-x-contain",
               zoomed ? "touch-none" : "touch-pan-x touch-pan-y",
               "[@media(hover:hover)_and_(pointer:fine)]:cursor-zoom-in",
             )}

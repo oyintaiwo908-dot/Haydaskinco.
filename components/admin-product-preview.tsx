@@ -38,7 +38,7 @@ export function AdminProductPreview({
     <section aria-label="Storefront card preview" className={cn("border border-border p-6", className)}>
       <h2 className="mb-4 text-xs font-medium uppercase tracking-[0.18em]">Storefront preview</h2>
       <article className="mx-auto flex w-full max-w-[240px] flex-col">
-        <div className="relative aspect-4/5 overflow-hidden bg-porcelain">
+        <div className="product-stage relative aspect-4/5 overflow-hidden">
           {showDiscount && (
             <span className="absolute left-2 top-2 z-10 bg-rose px-2 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white">
               −{discount}%

@@ -1,4 +1,4 @@
-import { ANNOUNCEMENT_MESSAGES, FREE_STANDARD_DELIVERY } from "@/lib/storefront-copy"
+import { ANNOUNCEMENT_MESSAGES } from "@/lib/storefront-copy"
 
 const SLOT_SECONDS = 4
 
@@ -8,10 +8,7 @@ const SLOT_SECONDS = 4
  * Under reduced motion only the first message shows, without rotation.
  */
 export function AnnouncementBar() {
-  const messages = [
-    FREE_STANDARD_DELIVERY,
-    ...ANNOUNCEMENT_MESSAGES.filter(message => message !== FREE_STANDARD_DELIVERY),
-  ]
+  const messages = [...ANNOUNCEMENT_MESSAGES]
   const n = messages.length
   const slot = 100 / n
   // Keyframes depend on the message count, so they are generated here (static, no user input).

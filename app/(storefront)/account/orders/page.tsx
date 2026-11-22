@@ -150,7 +150,6 @@ export default function AccountOrdersPage() {
                     <p className="text-[10px] font-light text-muted-foreground mt-0.5 capitalize">
                       {order.items.reduce((sum, i) => sum + i.quantity, 0)} item
                       {order.items.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? "s" : ""}
-                      {" · "}{order.shippingMethod} shipping
                     </p>
                   </div>
                 </div>

@@ -1,3 +1,4 @@
+import { SITE_HOLDING, holdingResponse } from "@/lib/holding"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -94,6 +95,8 @@ function parseBody(raw: Record<string, unknown>): Body {
     throw new ValidationError("Incomplete shipping details.")
   }
   const ship = s as Record<string, unknown>
+  // Still accepted (and validated) so older clients keep working, but it no longer affects the
+  // price: delivery is quoted and paid separately after the order.
   const method = ship.shippingMethod ?? "standard"
   if (method !== "standard" && method !== "express") {
     throw new ValidationError("Choose a valid shipping method.")
@@ -214,6 +217,8 @@ function allowedSkuPrices(basePrice: number, variants: unknown): Set<number> {
 }
 
 export async function POST(request: Request) {
+  // Holding page until launch: no orders or form posts from stale tabs (lib/holding.ts).
+  if (SITE_HOLDING) return holdingResponse()
   try {
     const ip = clientIp(request)
     const limited = await rateLimit(`orders-create:${ip}`, 10, 60_000)
@@ -410,7 +415,9 @@ export async function POST(request: Request) {
     }
 
     const subtotal = pricedLines.reduce((s, i) => s + i.price * i.quantity, 0)
-    const shippingCost = shipping.shippingMethod === "express" ? 3000 : 0
+    // No delivery fee at checkout, whatever the client sends (owner decision): delivery is quoted
+    // and paid separately after the order.
+    const shippingCost = 0
     const tax = Math.round(subtotal * 0.075)
 
     let discount = 0
@@ -492,7 +499,7 @@ export async function POST(request: Request) {
         zip: shipping.zip,
         country: shipping.country,
       },
-      shipping_method: shipping.shippingMethod,
+      shipping_method: "standard",
       shipping_cost: shippingCost,
       subtotal,
       tax,

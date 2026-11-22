@@ -9,6 +9,7 @@ import {
   type WholesaleRow,
 } from "@/lib/supabase/inbox"
 import { cn } from "@/lib/utils"
+import { useAdminListParams, useAdminScrollRestore } from "@/components/admin-list-state"
 
 type Tab = "contact" | "wholesale" | "newsletter"
 
@@ -23,8 +24,11 @@ function formatDate(iso: string) {
 }
 
 export default function AdminInboxPage() {
-  const [tab, setTab] = useState<Tab>("contact")
+  const [query, setQuery] = useAdminListParams({ tab: "contact" })
+  const tab = query.tab as Tab
+  const setTab = (v: Tab) => setQuery({ tab: v })
   const [loading, setLoading] = useState(true)
+  useAdminScrollRestore(!loading)
   const [newsletter, setNewsletter] = useState<NewsletterRow[]>([])
   const [contact, setContact] = useState<ContactRow[]>([])
   const [wholesale, setWholesale] = useState<WholesaleRow[]>([])

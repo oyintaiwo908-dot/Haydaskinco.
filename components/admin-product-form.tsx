@@ -14,6 +14,7 @@ import { getCategoryTree, type CategorySection } from "@/lib/supabase/categories
 import { CategoryMultiSelect } from "@/components/category-multi-select"
 import { TagPicker } from "@/components/tag-picker"
 import { AdminProductPreview } from "@/components/admin-product-preview"
+import { adminReturnUrl } from "@/components/admin-list-state"
 
 /* ─── Form types ─────────────────────────────────────────────── */
 type VariantRow = { label: string; price: string }
@@ -385,7 +386,7 @@ export function AdminProductForm({ product }: { product?: Product }) {
     setSaved(true)
     setTimeout(() => {
       setSaved(false)
-      router.push("/admin/products")
+      router.push(adminReturnUrl("/admin/products"), { scroll: false })
     }, 1200)
   }
 
@@ -398,7 +399,7 @@ export function AdminProductForm({ product }: { product?: Product }) {
       const { revalidateProducts } = await import("@/app/actions/revalidate")
       const refreshed = await revalidateProducts(product.id)
       if (!refreshed.ok) console.warn("[product] storefront refresh skipped:", refreshed.error)
-      router.push("/admin/products")
+      router.push(adminReturnUrl("/admin/products"), { scroll: false })
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Could not update archive status.")
       setArchiving(false)
@@ -431,7 +432,7 @@ export function AdminProductForm({ product }: { product?: Product }) {
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
-            onClick={() => router.push("/admin/products")}
+            onClick={() => router.push(adminReturnUrl("/admin/products"), { scroll: false })}
             className="flex shrink-0 items-center gap-1.5 text-xs font-light text-muted-foreground hover:text-foreground transition-colors uppercase tracking-[0.15em]"
           >
             <ArrowLeft className="size-3.5" /> Products
@@ -459,7 +460,7 @@ export function AdminProductForm({ product }: { product?: Product }) {
           )}
           <button
             type="button"
-            onClick={() => router.push("/admin/products")}
+            onClick={() => router.push(adminReturnUrl("/admin/products"), { scroll: false })}
             className="border border-border px-4 py-2 text-xs font-light uppercase tracking-[0.15em] hover:border-foreground transition-colors"
           >
             Discard

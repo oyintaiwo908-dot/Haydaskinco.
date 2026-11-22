@@ -49,7 +49,7 @@ export default function AdminRegisterForm() {
     if (!supabase) {
       // No Supabase configured — mock path
       await new Promise(r => setTimeout(r, 900))
-      router.push("/admin/dashboard")
+      router.push("/admin")
       return
     }
 

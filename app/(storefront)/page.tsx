@@ -19,7 +19,7 @@ import { getPublishedJournals } from "@/lib/supabase/journals"
 import { ALL_CONCERNS, ALL_SKIN_TYPES, slugifyCatalogLabel } from "@/lib/catalog"
 import { getEffectivePrice, hasDiscount, type Product } from "@/lib/products"
 import { getSiteUrl } from "@/lib/site"
-import { FREE_STANDARD_DELIVERY, SOCIAL_URLS } from "@/lib/storefront-copy"
+import { DELIVERY_SHORT, SOCIAL_URLS } from "@/lib/storefront-copy"
 import { getWhatsAppDisplay } from "@/lib/whatsapp"
 
 /** 1h ISR; admin saves refresh it on demand (app/actions/revalidate.ts). Short windows burn Vercel CPU. */
@@ -105,7 +105,7 @@ async function StatementBand() {
           </span>
           <figcaption className="absolute -bottom-5 -left-3 max-w-[15rem] bg-navy-deep px-5 py-4 text-sm leading-snug text-on-dark shadow-float md:-left-10">
             <span className="block font-serif text-xl italic text-blush">Trusted brands. Authentic products.</span>
-            {FREE_STANDARD_DELIVERY}.
+            {DELIVERY_SHORT}.
           </figcaption>
         </figure>
       </div>
@@ -360,7 +360,7 @@ async function RitualSection() {
                     </Link>
                   </div>
                   <Link href={`/product/${s.product.id}`} prefetch={false} className="group block w-full max-w-[12.5rem] bg-white p-2 text-navy-deep shadow-float sm:max-w-[15rem] md:max-w-none">
-                    <span className="relative block aspect-4/5 overflow-hidden bg-porcelain">
+                    <span className="product-stage relative block aspect-4/5 overflow-hidden">
                       <Image
                         src={s.product.image || "/placeholder.svg"}
                         alt=""

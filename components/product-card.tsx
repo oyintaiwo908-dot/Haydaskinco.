@@ -29,11 +29,11 @@ function tagClass(tag: string) {
 export function ProductCard({
   product,
   index,
-  isWhiteBackground = false,
   href,
 }: {
   product: Product
   index?: number
+  /** Deprecated: every product stage is white now (kept so callers need not change). */
   isWhiteBackground?: boolean
   /** Override product detail link (e.g. `/deal/[id]` for bundles). */
   href?: string
@@ -66,8 +66,7 @@ export function ProductCard({
       <div
         data-card-media=""
         className={cn(
-          "card-media relative aspect-4/5 overflow-hidden",
-          isWhiteBackground ? "bg-white" : "bg-porcelain",
+          "card-media product-stage relative aspect-4/5 overflow-hidden",
         )}
       >
         <Image
