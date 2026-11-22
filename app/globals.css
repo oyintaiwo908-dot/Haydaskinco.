@@ -512,97 +512,114 @@ html:has(dialog.sheet[open]) {
     opacity 900ms var(--ease-out-expo) calc(420ms + var(--i, 0) * 110ms),
     transform 900ms var(--ease-out-expo) calc(420ms + var(--i, 0) * 110ms);
 }
-.hero-product {
-  opacity: 0;
-  transform: translate3d(48px, 12px, 0) scale(0.94);
-  transition:
-    opacity 600ms var(--ease-out-expo),
-    transform 700ms var(--ease-out-expo);
+/* ─── Banner composition (image-led hero) ───────────────────────────────────
+   Each slide is a light campaign banner: a tone gradient, a shared leaf-shadow layer (drawn
+   procedurally, public/hero/leaves-*), a soft glow, and product packshots placed per layout. */
+.hero-banner {
+  background: var(--hero-bg);
 }
-.hero-slide[data-active] .hero-product {
-  opacity: 1;
-  transform: none;
-  transition:
-    opacity 1000ms var(--ease-out-expo) 120ms,
-    transform 1400ms var(--spring-soft) 120ms;
-}
-/* First paint: the active slide plays its entrance once. */
-@starting-style {
-  .hero-slide[data-active] .hero-line { transform: translateY(108%); }
-  .hero-slide[data-active] .hero-fade { opacity: 0; transform: translateY(16px); }
-  .hero-slide[data-active] .hero-product { opacity: 0; transform: translate3d(48px, 12px, 0) scale(0.94); }
-}
-
-.hero-card {
-  transform-style: preserve-3d;
-  will-change: transform;
-}
-/* Soft floor shadow under the panel (static). */
-.hero-floor {
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  bottom: -34px;
-  height: 56px;
-  pointer-events: none;
-  background: radial-gradient(closest-side, rgb(31 37 56 / 0.42), transparent);
-}
-.hero-chip {
-  will-change: transform;
-}
-.hero-seal {
-  animation: seal-spin 28s linear infinite;
-  will-change: transform;
-}
-@keyframes seal-spin {
-  to { rotate: 1turn; }
-}
-[data-offscreen] .hero-seal,
-.hero-slide:not([data-active]) .hero-seal {
-  animation-play-state: paused;
-}
-
-/* One sheen pass across the photo when its slide arrives. */
-.hero-panel::after {
+.hero-banner::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.6) 50%, transparent 62%);
-  translate: -120% 0;
-}
-@keyframes hero-sheen {
-  to { translate: 120% 0; }
-}
-.hero-slide[data-active] .hero-panel::after {
-  animation: hero-sheen 1.6s var(--ease-out-expo) 0.7s both;
-}
-
-/* Light-text slides: a navy scrim that holds --scrim alpha across the copy band, then fades
-   out smoothly. Top-to-bottom on phones (copy above the product), left-to-right on desktop.
-   Keeps white copy >= 4.5:1 on every slide. */
-.hero-scrim {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: var(--grain), linear-gradient(
-    to bottom,
-    rgb(31 37 56 / var(--scrim, 0.5)) 0%,
-    rgb(31 37 56 / var(--scrim, 0.5)) 42%,
-    rgb(31 37 56 / calc(var(--scrim, 0.5) * 0.5)) 60%,
-    rgb(31 37 56 / 0) 80%
-  );
+  background: image-set(url("/hero/leaves-tall.avif") type("image/avif"), url("/hero/leaves-tall.webp") type("image/webp")) top center / 100% auto no-repeat;
 }
 @media (min-width: 1024px) {
-  .hero-scrim {
-    background: var(--grain), linear-gradient(
-      to right,
-      rgb(31 37 56 / var(--scrim, 0.5)) 0%,
-      rgb(31 37 56 / var(--scrim, 0.5)) 40%,
-      rgb(31 37 56 / calc(var(--scrim, 0.5) * 0.5)) 56%,
-      rgb(31 37 56 / 0) 74%
-    );
+  .hero-banner::before {
+    background-image: image-set(url("/hero/leaves-wide.avif") type("image/avif"), url("/hero/leaves-wide.webp") type("image/webp"));
+    background-size: cover;
   }
+}
+.hero-banner[data-tone="blush"] {
+  --hero-bg: linear-gradient(165deg, #fdf8f6 0%, #fbeef0 55%, #f6dfe4 100%);
+  --hero-glow: rgb(250 203 211 / 0.55);
+}
+.hero-banner[data-tone="sun"] {
+  --hero-bg: linear-gradient(165deg, #fffaf4 0%, #fdf1e4 55%, #f8e3d2 100%);
+  --hero-glow: rgb(255 200 140 / 0.75);
+}
+.hero-banner[data-tone="mist"] {
+  --hero-bg: linear-gradient(165deg, #f8f9fb 0%, #eff1f6 55%, #e3e7f0 100%);
+  --hero-glow: rgb(186 197 222 / 0.75);
+}
+.hero-stage-box {
+  height: 300px;
+}
+@media (min-width: 1024px) {
+  .hero-stage-box { height: 540px; }
+}
+/* A soft disc of the slide colour behind the group (static, rastered once). */
+.hero-glow {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: min(92%, 34rem);
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--hero-glow), transparent 72%);
+  pointer-events: none;
+}
+.hero-item {
+  position: absolute;
+  display: block;
+  left: var(--mx);
+  bottom: var(--my);
+  height: var(--mh);
+  z-index: var(--mz);
+  translate: -50% 0;
+  rotate: var(--mr);
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 500ms var(--ease-out-expo),
+    transform 600ms var(--ease-out-expo);
+}
+@media (min-width: 1024px) {
+  .hero-item {
+    left: var(--dx);
+    bottom: var(--dy);
+    height: var(--dh);
+    z-index: var(--dz);
+    rotate: var(--dr);
+  }
+}
+.hero-slide[data-active] .hero-item {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 900ms var(--ease-out-expo) calc(160ms + var(--k, 0) * 90ms),
+    transform 1200ms var(--spring-soft) calc(160ms + var(--k, 0) * 90ms);
+}
+/* No @starting-style here: the first slide paints at once (it is the LCP), later slides animate in. */
+.hero-item-img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: none;
+}
+/* Contact shadow under each pack (static). */
+.hero-item-shadow {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: -3%;
+  height: 7%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(31 37 56 / 0.3), transparent);
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hero-slide[data-active] .hero-item:hover {
+    transform: translateY(-6px);
+    transition: transform 400ms var(--spring-soft);
+  }
+}
+.hero-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
 }
 @keyframes hero-progress {
   from { scale: 0 1; }
@@ -635,9 +652,7 @@ html:has(dialog.sheet[open]) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .light-field > span,
-  .hero-seal,
-  .hero-slide[data-active] .hero-panel::after {
+  .light-field > span {
     animation: none !important;
   }
   .hero-slide,
@@ -646,20 +661,18 @@ html:has(dialog.sheet[open]) {
   .hero-slide[data-active] .hero-line,
   .hero-fade,
   .hero-slide[data-active] .hero-fade,
-  .hero-product,
-  .hero-slide[data-active] .hero-product {
+  .hero-item,
+  .hero-slide[data-active] .hero-item {
     transition: none !important;
   }
 }
 /* Save-Data and low-power hints: keep the field still. */
 @media (prefers-reduced-data: reduce) {
-  .light-field > span,
-  .hero-seal {
+  .light-field > span {
     animation: none !important;
   }
 }
-html[data-save-data] .light-field > span,
-html[data-save-data] .hero-seal {
+html[data-save-data] .light-field > span {
   animation: none !important;
 }
 
@@ -711,31 +724,35 @@ article:has(> div > h3 > .card-link:focus-visible) {
   outline-offset: 4px;
 }
 
-/* ─── Announcement rotator (components/announcement-bar.tsx) ─────────────── */
-.announce-item {
-  opacity: 0;
-  animation-timing-function: var(--ease-atelier);
-  animation-iteration-count: infinite;
-  animation-fill-mode: both;
+/* ─── Announcement marquee (components/announcement-bar.tsx) ─────────────────
+   Continuous leftward scroll (transform only). Pauses on hover and keyboard focus; still under
+   reduced motion, showing the first message centred. Duration is set inline from the text. */
+.announce-track {
+  animation: marquee 48s linear infinite;
+  will-change: transform;
 }
-.announce:hover .announce-item,
-.announce:has(.announce-pause input:checked) .announce-item {
+.announce:hover .announce-track,
+.announce:focus .announce-track,
+.announce:focus-within .announce-track {
   animation-play-state: paused;
 }
-.announce-pause:has(input:focus-visible) {
+.announce:focus-visible {
   outline: 2px solid var(--on-dark);
-  outline-offset: 1px;
+  outline-offset: -3px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .announce-item {
+  .announce-track {
     animation: none !important;
+    width: 100%;
+    justify-content: center;
   }
-  .announce-item:first-child {
-    opacity: 1;
+  .announce-list[aria-hidden],
+  .announce-item:not(:first-child) {
+    display: none;
   }
-  .announce-pause {
-    visibility: hidden;
-  }
+  .announce-list { flex-shrink: 1; min-width: 0; }
+  .announce-item { white-space: normal; text-align: center; margin-inline: 1rem; line-height: 1.3; }
+  .announce-track { height: auto; min-height: 2.25rem; padding-block: 0.4rem; }
 }
 
 /* Pending navigation hint on cards (components/link-pending-hint.tsx) */
@@ -1138,24 +1155,6 @@ dialog.sheet.mobile-menu[open] .mm-item {
 }
 
 /* ─── Home: editorial sections ────────────────────────────────────────── */
-/* Statement band: words light up as the band scrolls through (opacity only). */
-.statement-word {
-  opacity: 1;
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .statement-word {
-      animation: word-light linear both;
-      animation-timeline: view();
-      animation-range: cover calc(12% + var(--w, 0) * 1.6%) cover calc(30% + var(--w, 0) * 1.6%);
-    }
-  }
-}
-@keyframes word-light {
-  from { opacity: 0.16; }
-  to { opacity: 1; }
-}
-
 /* Brand marquee: two copies of the list slide left forever; pause on hover or focus. */
 .marquee {
   mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
@@ -1179,38 +1178,6 @@ dialog.sheet.mobile-menu[open] .mm-item {
   .marquee-track > [aria-hidden] { display: none; }
 }
 
-/* Category tiles: a curtain lifts off the image as it enters; hover zooms and slides the label. */
-.tile-media img {
-  transition: scale 1200ms var(--ease-out-expo);
-}
-.tile-curtain {
-  position: absolute;
-  inset: 0;
-  background: var(--porcelain);
-  transform-origin: top;
-  scale: 1 0;
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .tile-curtain {
-      animation: curtain linear both;
-      animation-timeline: view();
-      animation-range: entry 10% entry 90%;
-    }
-  }
-}
-@keyframes curtain {
-  from { scale: 1 1; }
-  to { scale: 1 0; }
-}
-@media (hover: hover) and (pointer: fine) {
-  .tile:hover .tile-media img { scale: 1.07; }
-  .tile:hover .tile-arrow { translate: 4px 0; }
-}
-.tile:active .tile-media { scale: 0.985; }
-.tile-media { transition: scale 300ms var(--spring-firm); }
-.tile-arrow { transition: translate 400ms var(--ease-out-expo); }
-
 /* Draggable rail (components/drag-rail.tsx) */
 .rail {
   scroll-snap-type: x mandatory;
@@ -1225,41 +1192,35 @@ dialog.sheet.mobile-menu[open] .mm-item {
   .rail { cursor: grab; }
 }
 
-/* Ritual: pinned on capable browsers; a plain list everywhere else. */
-.ritual-steps { display: grid; gap: 3rem; }
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) and (min-height: 560px) {
-    .ritual { view-timeline: --ritual block; height: calc(var(--steps) * 85svh + 20svh); }
-    .ritual-pin { position: sticky; top: 0; height: 100svh; display: flex; align-items: center; overflow: hidden; }
-    .ritual-steps { display: grid; gap: 0; }
-    .ritual-step { grid-area: 1 / 1; opacity: 0; animation: ritual-step linear both; animation-timeline: --ritual; }
-    .ritual-step:first-child { animation-name: ritual-first; }
-    .ritual-step:last-child { animation-name: ritual-last; }
-    .ritual-step { animation-range: contain calc(var(--k) * 100% / var(--steps)) contain calc((var(--k) + 1) * 100% / var(--steps)); }
-    .ritual-bar { animation: ritual-bar linear both; animation-timeline: --ritual; animation-range: contain 0% contain 100%; transform-origin: top; }
-    .ritual-image { animation: ritual-image linear both; animation-timeline: --ritual; animation-range: contain calc(var(--k) * 100% / var(--steps)) contain calc((var(--k) + 1) * 100% / var(--steps)); }
+/* Ritual (home): four step cards. Phones: a horizontal snap row, each card ~74% wide so the
+   next one peeks. Desktop: four columns. No pinning, no scroll-linked stepping. */
+.ritual-row {
+  /* position: relative keeps the cards' sr-only text (absolutely positioned) inside the
+     scroller; without it the off-screen cards widened the page (a phone laid out at 970px). */
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1.25rem;
+  padding-inline: 1.25rem;
+  padding-bottom: 0.25rem;
+  scrollbar-width: none;
+}
+.ritual-row::-webkit-scrollbar { display: none; }
+.ritual-card { scroll-snap-align: start; min-width: 0; flex: 0 0 min(74%, 18rem); }
+@media (min-width: 768px) {
+  .ritual-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.25rem;
+    overflow: visible;
+    padding-inline: 1.25rem;
   }
 }
-@keyframes ritual-step {
-  0% { opacity: 0; transform: translateY(48px); }
-  18%, 82% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: translateY(-48px); }
-}
-@keyframes ritual-first {
-  0%, 82% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: translateY(-48px); }
-}
-@keyframes ritual-last {
-  0% { opacity: 0; transform: translateY(48px); }
-  18%, 100% { opacity: 1; transform: none; }
-}
-@keyframes ritual-bar {
-  from { scale: 1 0; }
-  to { scale: 1 1; }
-}
-@keyframes ritual-image {
-  from { transform: translateY(6%) scale(1.04); }
-  to { transform: translateY(-6%) scale(1); }
+@media (min-width: 1024px) {
+  .ritual-row { padding-inline: 2rem; gap: 1.5rem; }
 }
 
 /* Parallax image inside a frame (journal feature) */
@@ -1305,7 +1266,7 @@ dialog.sheet.mobile-menu[open] .mm-item {
   dialog.sheet.mobile-menu[open] .mm-item,
   .card-media, .card-media img, .card-quick,
   .heart-burst > i, .heart-burst::before, .heart-pop,
-  .tile-media, .tile-media img, .tile-arrow, .shimmer::after {
+  .shimmer::after {
     animation: none !important;
     transition: none !important;
   }
@@ -1439,78 +1400,6 @@ dialog.sheet.search-overlay[open] .search-pop {
   .step-panel { animation: none; }
 }
 
-/* ─── Hero, round two: depth, wipe, scroll cue, scroll parallax ─────────── */
-/* Slide change: a blush band sweeps across the stage. */
-.hero-wipe {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(100deg, transparent 0%, rgb(250 203 211 / 0.55) 35%, rgb(253 240 243 / 0.75) 50%, rgb(250 203 211 / 0.55) 65%, transparent 100%);
-  translate: -110% 0;
-  animation: hero-wipe 1100ms var(--ease-out-expo) both;
-  will-change: translate;
-}
-@keyframes hero-wipe {
-  to { translate: 110% 0; }
-}
-
-/* Scroll cue (desktop): a line that draws downward, on a loop. */
-.hero-scroll-cue {
-  position: absolute;
-  left: 50%;
-  bottom: 1.75rem;
-  z-index: 6;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  translate: -50% 0;
-  pointer-events: none;
-  font-size: 10px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-}
-.hero-scroll-cue > i {
-  display: block;
-  width: 1px;
-  height: 36px;
-  background: currentColor;
-  transform-origin: top;
-  animation: cue-draw 2.2s var(--ease-out-expo) infinite;
-}
-@keyframes cue-draw {
-  0% { scale: 1 0; opacity: 1; }
-  60% { scale: 1 1; opacity: 1; }
-  100% { scale: 1 1; opacity: 0; }
-}
-/* Only from 1280px: there the copy and product columns leave a clear gap at the centre. */
-@media (min-width: 1280px) {
-  .hero-scroll-cue { display: flex; }
-}
-
-/* As the page scrolls, the product drifts up faster than the copy (scroll-linked, translate). */
-@supports (animation-timeline: scroll()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .hero-slide[data-active] .hero-product {
-      animation: hero-depth-product linear both;
-      animation-timeline: scroll(root block);
-      animation-range: 0 90vh;
-    }
-    .hero-scroll-cue {
-      animation: hero-cue-out linear both;
-      animation-timeline: scroll(root block);
-      animation-range: 0 20vh;
-    }
-  }
-}
-@keyframes hero-depth-product {
-  to { translate: 0 -72px; }
-}
-@keyframes hero-cue-out {
-  to { opacity: 0; }
-}
-
 /* ─── Section headings reveal through a mask as they enter (scroll-driven) ── */
 .heading-mask {
   display: block;
@@ -1569,38 +1458,11 @@ dialog.sheet.mobile-menu[open]::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-wipe, .hero-scroll-cue > i, .heading-mask > span,
+  .heading-mask > span,
   dialog.sheet.mobile-menu[open]::before {
     animation: none !important;
   }
-  .hero-wipe { display: none; }
   .group:hover .card-media::after { transition: none; }
-}
-
-/* ─── Bento (home "Shop by what your skin needs") ───────────────────────── */
-.bento-img {
-  transition: scale 1200ms var(--ease-out-expo);
-}
-.bento-arrow {
-  transition: translate 500ms var(--spring-soft), rotate 500ms var(--spring-soft);
-}
-.bento-sheen {
-  position: absolute;
-  inset: -20%;
-  pointer-events: none;
-  background: radial-gradient(closest-side, rgb(250 203 211 / 0.35), transparent 70%);
-  translate: -30% 30%;
-  transition: translate 1200ms var(--ease-out-expo);
-}
-@media (hover: hover) and (pointer: fine) {
-  .bento:hover .bento-img { scale: 1.06; }
-  .bento:hover .bento-arrow { translate: 3px -3px; rotate: 45deg; }
-  .bento:hover .bento-sheen { translate: 20% -20%; }
-}
-.bento:active { scale: 0.99; }
-.bento { transition: scale 300ms var(--spring-firm); }
-@media (prefers-reduced-motion: reduce) {
-  .bento, .bento-img, .bento-arrow, .bento-sheen { transition: none; }
 }
 
 /* ─── Serif figures ───────────────────────────────────────────────────────

@@ -117,12 +117,12 @@ test.describe("design: serif figures", () => {
 
   test("serif numbers use lining figures (stats, hero counter, ritual, PDP price, receipt total)", async ({ page }) => {
     await page.goto("/")
-    const stat = page.locator("section[aria-labelledby='statement-title'] dd").first()
+    const stat = page.locator(".stats-row dd").first()
     await expect(stat).toBeAttached()
     expect(await stat.locator("span[aria-hidden]").first().evaluate(lining)).toContain("lining-nums")
     const counter = page.getByRole("region", { name: "Featured campaigns" }).locator("span.font-serif").first()
     expect(await counter.evaluate(lining)).toContain("lining-nums")
-    const ritualNumber = page.locator(".ritual-step p[aria-hidden]").first()
+    const ritualNumber = page.locator(".ritual-card span.font-serif[aria-hidden]").first()
     if (await ritualNumber.count()) expect(await ritualNumber.evaluate(lining)).toContain("lining-nums")
 
     await addPdpItemToCart(page)

@@ -36,23 +36,29 @@ test.describe("reduced motion", () => {
     expect(await movingAnimations(page)).toEqual([])
   })
 
-  test("hero autoplay is off", async ({ page }) => {
-    await page.goto("/")
-    await expect(page.getByRole("region", { name: "Featured campaigns" }).getByRole("button", { name: "Play slideshow" })).toBeVisible()
-  })
-
-  test("review must-fix 5: Play is an explicit opt-in that really starts the slideshow", async ({ page }) => {
+  test("hero autoplay never runs (and there is no pause button)", async ({ page }) => {
     await page.goto("/")
     await page.mouse.move(5, 5)
     const hero = page.getByRole("region", { name: "Featured campaigns" })
-    const play = hero.getByRole("button", { name: "Play slideshow" })
-    await expect(play).not.toHaveAttribute("aria-pressed")
-    await play.focus()
-    await page.keyboard.press("Enter")
-    const pause = hero.getByRole("button", { name: "Pause slideshow" })
-    await expect(pause).toBeFocused()
-    // Focus inside the hero holds autoplay; move it out, then the slide must advance.
-    await pause.blur()
-    await expect(hero.getByRole("button", { name: /^Show slide 2/ })).toHaveAttribute("aria-current", "true", { timeout: 12_000 })
+    await expect(hero.getByRole("button", { name: "Next slide" })).toBeVisible()
+    await expect(hero.getByRole("button", { name: /pause|play/i })).toHaveCount(0)
+    await page.clock.install()
+    await page.clock.fastForward(30_000)
+    await page.clock.runFor(1_000)
+    await expect(hero.getByRole("button", { name: /^Show slide 1/ })).toHaveAttribute("aria-current", "true")
+    // Manual controls still work.
+    await hero.getByRole("button", { name: "Next slide" }).click()
+    await expect(hero.getByRole("button", { name: /^Show slide 2/ })).toHaveAttribute("aria-current", "true")
+  })
+
+  test("announcement bar stands still and shows only the first message", async ({ page }) => {
+    await page.goto("/")
+    const track = page.locator(".announce-track")
+    expect(await track.evaluate(el => getComputedStyle(el).animationName)).toBe("none")
+    const items = page.getByRole("list", { name: "Store announcements" }).getByRole("listitem")
+    await expect(items.first()).toBeVisible()
+    await expect(items.first()).toHaveText("Launching soon. We're still working on the site")
+    await expect(items.nth(1)).toBeHidden()
+    await expect(page.locator(".announce-list[aria-hidden]")).toBeHidden()
   })
 })

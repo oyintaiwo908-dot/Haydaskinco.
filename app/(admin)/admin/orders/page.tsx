@@ -16,6 +16,8 @@ import {
   type OrderStatus,
 } from "@/lib/orders"
 import { getAdminOrdersPage } from "@/lib/supabase/orders"
+import { useAdminAuth } from "@/components/admin-auth-provider"
+import { SUB_ADMIN_ORDERS_NOTE, SUB_ADMIN_ORDER_WINDOW_DAYS, subAdminWindowStart } from "@/lib/order-window"
 import { OrderItemThumb } from "@/components/order-item-thumb"
 import { allowedStatusTargets, requestStatusChange } from "@/components/admin-order-status"
 import {
@@ -72,6 +74,9 @@ export default function AdminOrdersPage() {
   const [reloadTick, setReloadTick] = useState(0)
   const [statusNotice, setStatusNotice] = useState<{ kind: "error" | "ok"; message: string } | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
+  // Sub admins see only the last week of orders (RLS enforces it too): no month range, no export.
+  const { session } = useAdminAuth()
+  const limited = session?.role === "sub_admin"
 
   // Filter changes go back to page 1 (set in the handlers, not in an effect).
   const setStatusFilter = (v: "all" | OrderStatus) => setQuery({ status: v, page: "1" })
@@ -84,7 +89,7 @@ export default function AdminOrdersPage() {
     return () => clearTimeout(t)
   }, [search, query.q, setQuery])
 
-  const queryKey = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick])
+  const queryKey = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick, limited])
   const [result, setResult] = useState<{ key: string; data: OrdersPageData } | null>(null)
   const loading = result?.key !== queryKey
   const orders = result?.data.orders ?? []
@@ -93,19 +98,20 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     let cancelled = false
-    const key = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick])
+    const key = JSON.stringify([searchDebounced, statusFilter, sortKey, months, page, reloadTick, limited])
     getAdminOrdersPage({
       search: searchDebounced,
       status: statusFilter,
       sort: sortKey,
       months,
+      since: limited ? subAdminWindowStart() : undefined,
       page,
       pageSize: ADMIN_PAGE_SIZE,
     }).then(data => {
       if (!cancelled) setResult({ key, data })
     })
     return () => { cancelled = true }
-  }, [searchDebounced, statusFilter, sortKey, months, page, reloadTick])
+  }, [searchDebounced, statusFilter, sortKey, months, page, reloadTick, limited])
 
   const load = useCallback(() => setReloadTick(t => t + 1), [])
   useAdminScrollRestore(!loading)
@@ -124,7 +130,9 @@ export default function AdminOrdersPage() {
     load()
   }
 
-  const monthsLabel = MONTH_RANGE_OPTIONS.find(o => o.value === months)?.label ?? "Last month"
+  const monthsLabel = limited
+    ? `Last ${SUB_ADMIN_ORDER_WINDOW_DAYS} days`
+    : (MONTH_RANGE_OPTIONS.find(o => o.value === months)?.label ?? "Last month")
 
   return (
     <div className="admin-page" onClick={() => setShowSort(false)}>
@@ -139,7 +147,7 @@ export default function AdminOrdersPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1.5">
+          {!limited && <div className="flex gap-1.5">
             {MONTH_RANGE_OPTIONS.map(opt => (
               <button
                 key={opt.value}
@@ -155,7 +163,7 @@ export default function AdminOrdersPage() {
                 {opt.label}
               </button>
             ))}
-          </div>
+          </div>}
           <button
             type="button"
             onClick={load}
@@ -165,13 +173,20 @@ export default function AdminOrdersPage() {
           >
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
-          <button className="hidden sm:flex items-center gap-2 border border-border px-4 py-2 text-xs font-light uppercase tracking-[0.15em] text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
-            <Download className="size-3.5" /> Export CSV
-          </button>
+          {!limited && (
+            <button className="hidden sm:flex items-center gap-2 border border-border px-4 py-2 text-xs font-light uppercase tracking-[0.15em] text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
+              <Download className="size-3.5" /> Export CSV
+            </button>
+          )}
         </div>
       </div>
 
       <div className="admin-page-body space-y-6">
+        {limited && (
+          <p data-testid="sub-admin-orders-note" className="border border-border bg-secondary/60 px-4 py-3 text-sm font-light text-foreground">
+            {SUB_ADMIN_ORDERS_NOTE}
+          </p>
+        )}
         {statusNotice && (
           <div
             role={statusNotice.kind === "error" ? "alert" : "status"}

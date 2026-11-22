@@ -4,6 +4,7 @@ import { createAdminServerClient } from "@/lib/supabase/server"
 import { sendOrderFulfilled, sendOrderShipped } from "@/lib/email/send"
 import { rowToOrder } from "@/lib/supabase/orders"
 import type { OrderStatus } from "@/lib/orders"
+import { SUB_ADMIN_ORDER_WINDOW_DAYS, isWithinSubAdminWindow } from "@/lib/order-window"
 import {
   errorResponse,
   forbiddenOrigin,
@@ -36,26 +37,23 @@ const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 }
 const NEEDS_PAID: OrderStatus[] = ["processing", "shipped", "fulfilled", "refunded"]
 
-/** Store manager = admin or sub_admin, not suspended (same rule as RLS is_store_manager()). */
-async function isStoreManager(
+/**
+ * The caller's store role: "admin", "sub_admin" (both not suspended, the same rule as RLS
+ * is_admin() / is_store_manager()), or null. Read from the profile row with the service role,
+ * so it does not depend on which migrations are applied.
+ */
+async function storeRole(
   userClient: NonNullable<Awaited<ReturnType<typeof createAdminServerClient>>>,
   userId: string,
-): Promise<boolean> {
-  const { data, error } = await userClient.rpc("is_store_manager")
-  if (!error) return data === true
-
-  // Migration 030 not applied yet: fall back to the profile row.
+): Promise<"admin" | "sub_admin" | null> {
   const db = createAdminClient() ?? userClient
   const { data: profile } = await db
     .from("profiles")
     .select("role, is_suspended")
     .eq("id", userId)
     .maybeSingle()
-  return Boolean(
-    profile &&
-      !profile.is_suspended &&
-      (profile.role === "admin" || profile.role === "sub_admin"),
-  )
+  if (!profile || profile.is_suspended) return null
+  return profile.role === "admin" || profile.role === "sub_admin" ? profile.role : null
 }
 
 export async function POST(request: Request) {
@@ -73,7 +71,8 @@ export async function POST(request: Request) {
     if (!user) {
       return jsonError("Unauthorized.", 401)
     }
-    if (!(await isStoreManager(adminAuth, user.id))) {
+    const role = await storeRole(adminAuth, user.id)
+    if (!role) {
       return jsonError("Forbidden.", 403)
     }
 
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
 
     const { data: current, error: readError } = await db
       .from("orders")
-      .select("status, payment_status")
+      .select("status, payment_status, created_at")
       .eq("reference", reference)
       .maybeSingle()
     if (readError) {
@@ -97,6 +96,11 @@ export async function POST(request: Request) {
       return jsonError("Could not load the order.", 500)
     }
     if (!current) return jsonError("Order not found.", 404)
+    // Sub admins may act only on orders inside their window (the same rule RLS applies to reads;
+    // this route uses the service role, so it checks here).
+    if (role === "sub_admin" && !isWithinSubAdminWindow(current.created_at)) {
+      return jsonError(`Sub admins can only update orders from the last ${SUB_ADMIN_ORDER_WINDOW_DAYS} days.`, 403)
+    }
 
     const from = current.status as OrderStatus
     if (from === status) return NextResponse.json({ ok: true, unchanged: true })

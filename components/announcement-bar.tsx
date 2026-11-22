@@ -1,50 +1,43 @@
 import { ANNOUNCEMENT_MESSAGES } from "@/lib/storefront-copy"
 
-const SLOT_SECONDS = 4
+/** Pre-redesign scroll speed (9ea0dd0, measured at 1440px wide): 24px per second, leftwards. */
+const PX_PER_SECOND = 24
+/** Rough width of one message set: 11px uppercase with 0.18em tracking, plus 64px margins. */
+const estimateWidth = (messages: readonly string[]) =>
+  messages.reduce((sum, m) => sum + m.length * 8.6 + 64, 0)
 
 /**
- * Rotating announcement, pure CSS (no client JS). Each message fades in for one slot.
- * The pause control is a native checkbox: :has(:checked) pauses the rotation (WCAG 2.2.2).
- * Under reduced motion only the first message shows, without rotation.
+ * Announcement bar: a continuous horizontal scroll, as before the redesign (commit 9ea0dd0),
+ * pure CSS. Two copies of the messages slide left forever; one copy is hidden from assistive
+ * tech. The old version translated by half the bar's width, so it jumped at each loop and
+ * crawled on phones; this one moves exactly one copy for a seamless loop at the old desktop
+ * speed. No pause button (client decision). It pauses on hover and on keyboard focus (the bar
+ * is focusable for that reason) and does not move at all under reduced motion, where only the
+ * first message shows.
  */
 export function AnnouncementBar() {
   const messages = [...ANNOUNCEMENT_MESSAGES]
-  const n = messages.length
-  const slot = 100 / n
-  // Keyframes depend on the message count, so they are generated here (static, no user input).
-  const keyframes = `@keyframes announce-${n}{0%{opacity:0;translate:0 6px}${(slot * 0.12).toFixed(2)}%{opacity:1;translate:0 0}${(slot * 0.88).toFixed(2)}%{opacity:1;translate:0 0}${slot.toFixed(2)}%{opacity:0;translate:0 -6px}100%{opacity:0;translate:0 -6px}}`
+  const seconds = Math.round(estimateWidth(messages) / PX_PER_SECOND)
+  const list = (hidden: boolean) => (
+    <ul className="announce-list flex shrink-0 items-center" aria-hidden={hidden || undefined} aria-label={hidden ? undefined : "Store announcements"}>
+      {messages.map(msg => (
+        <li key={msg} className="announce-item mx-8 shrink-0 whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.18em]">
+          {msg}
+        </li>
+      ))}
+    </ul>
+  )
 
   return (
-    <div className="announce relative bg-navy-deep text-on-dark">
-      <style>{keyframes}</style>
-      <div className="mx-auto flex h-9 max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-8">
-        <span className="size-8 shrink-0" aria-hidden />
-        <ul aria-label="Store announcements" className="relative h-full flex-1 overflow-hidden text-center">
-          {messages.map((msg, i) => (
-            <li
-              key={msg}
-              className="announce-item absolute inset-0 flex items-center justify-center text-[11px] font-medium uppercase tracking-[0.18em]"
-              style={{
-                animationName: `announce-${n}`,
-                animationDuration: `${n * SLOT_SECONDS}s`,
-                animationDelay: `${i * SLOT_SECONDS}s`,
-              }}
-            >
-              {msg}
-            </li>
-          ))}
-        </ul>
-        <label className="announce-pause relative flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-control text-on-dark/80 hover:text-on-dark">
-          <input type="checkbox" className="peer absolute inset-0 cursor-pointer opacity-0" aria-label="Pause announcements" />
-          {/* Pause bars when running, play triangle when paused */}
-          <svg viewBox="0 0 12 12" aria-hidden className="size-3 peer-checked:hidden">
-            <rect x="2.5" y="2" width="2.2" height="8" fill="currentColor" />
-            <rect x="7.3" y="2" width="2.2" height="8" fill="currentColor" />
-          </svg>
-          <svg viewBox="0 0 12 12" aria-hidden className="hidden size-3 peer-checked:block">
-            <path d="M3 2l7 4-7 4z" fill="currentColor" />
-          </svg>
-        </label>
+    <div
+      className="announce relative overflow-hidden bg-navy-deep text-on-dark"
+      tabIndex={0}
+      role="region"
+      aria-label="Announcements (focus or hover to pause)"
+    >
+      <div className="announce-track flex h-9 w-max items-center" style={{ animationDuration: `${seconds}s` }}>
+        {list(false)}
+        {list(true)}
       </div>
     </div>
   )

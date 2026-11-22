@@ -47,6 +47,11 @@ export type Order = {
   updatedAt: string
 }
 
+/** Mock dates are relative to now, so local mock mode always has recent and older orders. */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
 export const orders: Order[] = [
   {
     id: "ORD-8842",
@@ -65,8 +70,8 @@ export const orders: Order[] = [
     status: "fulfilled",
     paymentStatus: "paid",
     paymentMethod: "card",
-    createdAt: "2024-12-14T09:22:00Z",
-    updatedAt: "2024-12-16T14:05:00Z",
+    createdAt: daysAgo(1),
+    updatedAt: daysAgo(0.2),
   },
   {
     id: "ORD-8841",
@@ -84,8 +89,8 @@ export const orders: Order[] = [
     status: "processing",
     paymentStatus: "paid",
     paymentMethod: "bank_transfer",
-    createdAt: "2024-12-14T11:45:00Z",
-    updatedAt: "2024-12-14T11:45:00Z",
+    createdAt: daysAgo(2),
+    updatedAt: daysAgo(2),
   },
   {
     id: "ORD-8840",
@@ -104,8 +109,8 @@ export const orders: Order[] = [
     paymentStatus: "paid",
     paymentMethod: "card",
     notes: "Please leave with neighbour if not home.",
-    createdAt: "2024-12-13T16:10:00Z",
-    updatedAt: "2024-12-14T08:30:00Z",
+    createdAt: daysAgo(3),
+    updatedAt: daysAgo(2.4),
   },
   {
     id: "ORD-8839",
@@ -123,8 +128,8 @@ export const orders: Order[] = [
     status: "shipped",
     paymentStatus: "paid",
     paymentMethod: "mobile_money",
-    createdAt: "2024-12-12T13:00:00Z",
-    updatedAt: "2024-12-13T10:15:00Z",
+    createdAt: daysAgo(5),
+    updatedAt: daysAgo(4),
   },
   {
     id: "ORD-8838",
@@ -142,8 +147,8 @@ export const orders: Order[] = [
     status: "processing",
     paymentStatus: "paid",
     paymentMethod: "card",
-    createdAt: "2024-12-12T08:30:00Z",
-    updatedAt: "2024-12-12T08:30:00Z",
+    createdAt: daysAgo(12),
+    updatedAt: daysAgo(12),
   },
   {
     id: "ORD-8837",
@@ -162,8 +167,8 @@ export const orders: Order[] = [
     status: "fulfilled",
     paymentStatus: "paid",
     paymentMethod: "bank_transfer",
-    createdAt: "2024-12-10T14:20:00Z",
-    updatedAt: "2024-12-12T09:00:00Z",
+    createdAt: daysAgo(20),
+    updatedAt: daysAgo(18),
   },
   {
     id: "ORD-8836",
@@ -182,8 +187,8 @@ export const orders: Order[] = [
     status: "pending",
     paymentStatus: "pending",
     paymentMethod: "card",
-    createdAt: "2024-12-14T17:55:00Z",
-    updatedAt: "2024-12-14T17:55:00Z",
+    createdAt: daysAgo(0.5),
+    updatedAt: daysAgo(0.5),
   },
   {
     id: "ORD-8835",
@@ -202,8 +207,8 @@ export const orders: Order[] = [
     paymentStatus: "refunded",
     paymentMethod: "card",
     notes: "Customer requested cancellation before dispatch.",
-    createdAt: "2024-12-09T10:00:00Z",
-    updatedAt: "2024-12-09T14:22:00Z",
+    createdAt: daysAgo(35),
+    updatedAt: daysAgo(34.8),
   },
 ]
 

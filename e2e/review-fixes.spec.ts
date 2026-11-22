@@ -109,6 +109,9 @@ test.describe("must fix", () => {
     const sheet = page.getByRole("dialog", { name: /Your cart/ })
     const alert = sheet.getByRole("alert")
     await expect(alert).toHaveText(/Some items are out of stock or limited/)
+    // Measure once the sheet has finished sliding in and its rows have faded in (a loaded host
+    // once caught them mid-animation, which reads as 1:1).
+    await sheet.evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))))
     const checks = [
       alert,
       sheet.getByText("Out of stock: remove to continue"),
@@ -139,7 +142,7 @@ test.describe("must fix", () => {
     const h1 = page.getByRole("heading", { level: 1 })
     await expect(h1).toHaveCount(1)
     await expect(h1).toHaveText(/HAYDA SKINCo/)
-    await expect(hero.getByRole("heading", { level: 2, name: "Niacinamide & Beyond" })).toBeVisible()
+    await expect(hero.getByRole("heading", { level: 2, name: "Dark Spots. Acne. Dryness. We Have Your Fix." })).toBeVisible()
 
     for (const n of [2, 3]) {
       await hero.getByRole("button", { name: "Next slide" }).click()
@@ -149,18 +152,15 @@ test.describe("must fix", () => {
     }
   })
 
-  test("5. pause control: label changes, no aria-pressed, and it really stops and restarts autoplay", async ({ page }) => {
+  test("5. (superseded) the pause control was removed at the client's request; no control is a toggle", async ({ page }) => {
+    // Client decision (round two): no pause button. Its WCAG 2.2.2 mitigations (hold on hover and
+    // keyboard focus, no autoplay under reduced motion) are tested in home.spec.ts and
+    // reduced-motion.spec.ts.
     await page.goto("/")
-    await page.mouse.move(5, 5)
     const hero = page.getByRole("region", { name: "Featured campaigns" })
-    const pause = hero.getByRole("button", { name: "Pause slideshow" })
-    await expect(pause).not.toHaveAttribute("aria-pressed")
-    await pause.focus()
-    await page.keyboard.press("Enter")
-    const play = hero.getByRole("button", { name: "Play slideshow" })
-    await expect(play).toBeFocused()
-    await expect(play).not.toHaveAttribute("aria-pressed")
-    // Reduced-motion counterpart (Play is an opt-in there) is in reduced-motion.spec.ts.
+    await expect(hero.getByRole("button", { name: "Next slide" })).toBeVisible()
+    await expect(hero.getByRole("button", { name: /pause|play/i })).toHaveCount(0)
+    for (const button of await hero.getByRole("button").all()) await expect(button).not.toHaveAttribute("aria-pressed")
   })
 
   test("6. checkout steps move focus to the new step heading (shipping → payment → review, never submitted)", async ({ page }) => {
@@ -225,7 +225,7 @@ test.describe("should fix: accessibility", () => {
     const live = hero.locator('[aria-live="polite"]')
     await expect(live).toHaveText("")
     await hero.getByRole("button", { name: "Next slide" }).click()
-    await expect(live).toHaveText("Slide 2 of 3: Skin Barrier Essentials")
+    await expect(live).toHaveText("Slide 2 of 3: SPF Every Single Day")
   })
 
   test("placeholders reach 4.5:1 (search, sign-in)", async ({ page }) => {

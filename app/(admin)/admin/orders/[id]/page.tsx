@@ -18,6 +18,8 @@ import { OrderItemThumb } from "@/components/order-item-thumb"
 import { allowedStatusTargets, requestStatusChange } from "@/components/admin-order-status"
 import { cn } from "@/lib/utils"
 import { AdminBackLink } from "@/components/admin-list-state"
+import { useAdminAuth } from "@/components/admin-auth-provider"
+import { SUB_ADMIN_ORDER_WINDOW_DAYS, isWithinSubAdminWindow } from "@/lib/order-window"
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", minimumFractionDigits: 0 }).format(n)
@@ -45,6 +47,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [copiedRef, setCopiedRef] = useState(false)
   const [saving, setSaving] = useState(false)
   const [statusNotice, setStatusNotice] = useState<{ kind: "error" | "ok"; message: string } | null>(null)
+  const { session } = useAdminAuth()
+  const limited = session?.role === "sub_admin"
 
   useEffect(() => {
     getOrderByReference(id).then(o => {
@@ -60,6 +64,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="h-8 w-48 bg-muted/50 animate-pulse mb-6" />
           <div className="h-64 w-full bg-muted/30 animate-pulse" />
         </div>
+      </div>
+    )
+  }
+
+  // Sub admins: orders older than the window are not available. With Supabase, RLS already
+  // hides them (the lookup returns nothing); the date check covers mock mode and stale views.
+  if (limited && (!order || !isWithinSubAdminWindow(order.createdAt))) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-20 text-center" data-testid="order-not-available">
+        <p className="font-serif text-2xl font-medium">Order not available</p>
+        <p className="max-w-sm text-sm font-light text-muted-foreground">
+          Sub admins can open orders from the last {SUB_ADMIN_ORDER_WINDOW_DAYS} days. Ask a full admin for older orders.
+        </p>
+        <AdminBackLink section="/admin/orders" className="text-xs uppercase tracking-[0.15em] text-gold hover:underline">
+          Back to orders
+        </AdminBackLink>
       </div>
     )
   }

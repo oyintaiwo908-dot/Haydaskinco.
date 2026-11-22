@@ -68,12 +68,12 @@ Fill in `.env` (see [Environment variables](#environment-variables)).
 
 ### Database
 
-Apply SQL migrations in order under `supabase/migrations/` (through **031**):
+Apply SQL migrations in order under `supabase/migrations/` (through **032**):
 
 1. Supabase Dashboard → SQL Editor, or  
 2. Supabase CLI: `supabase db push` (if linked)
 
-Critical hardening migrations: **026**, **027**, **029** (029 removes stock holds — decrement only on pay), **031** (closes anon RPCs, points farming, public promo listing; see [Security notes](#security-notes)). Test new migrations on a local Supabase before production.
+Critical hardening migrations: **026**, **027**, **029** (029 removes stock holds — decrement only on pay), **031** (closes anon RPCs, points farming, public promo listing; see [Security notes](#security-notes)), **032** (sub admins read only the last 7 days of orders; not yet run anywhere, test it on a local or staging project first). Test new migrations on a local Supabase before production.
 
 ### Run locally
 
@@ -201,6 +201,7 @@ Image Optimization is disabled (`images.unoptimized: true`) to stay within Verce
 
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` or `PAYSTACK_SECRET_KEY` to the client
 - Production admin registration is off unless `ALLOW_ADMIN_REGISTER=true`
+- Sub admins see only orders from the last 7 days (rolling window, migration 032 and `lib/order-window.ts`); full admins see everything. The status route refuses a sub admin on an older order.
 - All order writes go through server routes with the service role. Since 031 the admin browser client can only read orders; status changes go through `POST /api/admin/orders/status`, which enforces this transition table (targets marked * also need `payment_status = 'paid'`):
 
   | From | Allowed to |

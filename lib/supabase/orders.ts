@@ -102,6 +102,8 @@ export type OrdersPageQuery = {
   sort?: "date_desc" | "date_asc" | "total_desc" | "total_asc"
   /** Look back N months from now. */
   months?: 1 | 2 | 3
+  /** Sub admins: start of their window (overrides `months`). RLS enforces the same window. */
+  since?: Date
   page?: number
   pageSize?: number
 }
@@ -113,6 +115,7 @@ export async function getAdminOrdersPage(
   const pageSize = Math.max(1, q.pageSize ?? 20)
   const months = q.months ?? 1
   const fromIso = (() => {
+    if (q.since) return q.since.toISOString()
     const d = new Date()
     d.setMonth(d.getMonth() - months)
     return d.toISOString()

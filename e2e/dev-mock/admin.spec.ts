@@ -87,6 +87,45 @@ test.describe("admin (mock mode)", () => {
     await expect.poll(() => scrollTop(page)).toBeGreaterThan(before - 30)
   })
 
+  // Mock orders are dated relative to now: ORD-8842, 8841, 8840, 8839 and 8836 fall inside the
+  // last 7 days; ORD-8838 (12 days), 8837 (20 days) and 8835 (35 days) are older.
+  test("a sub admin sees only the last 7 days of orders, without range or export controls", async ({ page }) => {
+    await signInAs(page, "sub_admin")
+    await page.goto("/admin/orders")
+    await expect(page.getByRole("heading", { level: 1, name: "Orders" })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("sub-admin-orders-note")).toHaveText(
+      "Showing orders from the last 7 days. Older orders are available to full admins.",
+    )
+    await expect(page.getByRole("button", { name: /^Last (month|2 months|3 months)$/ })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: /Export CSV/ })).toHaveCount(0)
+    await expect(page.getByText("ORD-8842").first()).toBeVisible()
+    for (const old of ["ORD-8838", "ORD-8837", "ORD-8835"]) await expect(page.getByText(old)).toHaveCount(0)
+  })
+
+  test("a sub admin opening an older order gets a not-available state, not an error", async ({ page }) => {
+    await signInAs(page, "sub_admin")
+    await page.goto("/admin/orders/ORD-8838")
+    await expect(page.getByTestId("order-not-available")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText("Order not available")).toBeVisible()
+    await expect(page.getByRole("link", { name: "Back to orders" })).toHaveAttribute("href", /\/admin\/orders/)
+    // An order inside the window still opens.
+    await page.goto("/admin/orders/ORD-8842")
+    await expect(page.getByText("ORD-8842").first()).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("order-not-available")).toHaveCount(0)
+  })
+
+  test("a full admin keeps the month range, export and older orders", async ({ page }) => {
+    await signInAs(page, "admin")
+    await page.goto("/admin/orders")
+    await expect(page.getByRole("heading", { level: 1, name: "Orders" })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("sub-admin-orders-note")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Last month" })).toBeVisible()
+    await expect(page.getByText("ORD-8838").first()).toBeVisible()
+    await page.goto("/admin/orders/ORD-8835")
+    await expect(page.getByText("ORD-8835").first()).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("order-not-available")).toHaveCount(0)
+  })
+
   test("journal editor Back returns to the filtered journal list", async ({ page }) => {
     await signInAs(page, "admin")
     await page.goto("/admin/journals?status=published&q=a")

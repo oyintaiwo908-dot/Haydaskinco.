@@ -8,8 +8,11 @@
 // 3. Before serving, the build output is scanned for the real Supabase hostname (read from
 //    .env, never printed). If it is found, the server refuses to start.
 // 4. Every Node process runs e2e/support/network-guard.cjs, which blocks and records any
-//    request to a non-local host. Google Fonts is allowed during the build only (next/font
-//    downloads and self-hosts the fonts); at runtime nothing external is allowed.
+//    request to a non-local host. Fonts are self-hosted (app/fonts/), so neither the build nor
+//    the server may reach Google Fonts; only `next dev`'s npm version check is allowed.
+// 5. After starting, the script polls its own server. If it keeps answering 5xx (a broken
+//    compile, for example), it prints the first error and exits non-zero instead of leaving
+//    Playwright waiting for its full webServer timeout.
 //
 // Usage: node e2e/server.mjs   (PORT, E2E_SKIP_BUILD=1 to reuse an existing .next-e2e build)
 //
@@ -86,6 +89,49 @@ Object.assign(baseEnv, {
 
 const nextBin = path.join(root, "node_modules/next/dist/bin/next")
 
+/**
+ * Polls the started server. Connection refused just means "not up yet" (bounded wait); a 5xx
+ * answer on three consecutive polls means it is up but broken: print the first error and exit
+ * non-zero, so Playwright fails at once instead of waiting out its webServer timeout.
+ */
+function failFastOnServerErrors(child, label) {
+  const url = `http://127.0.0.1:${port}/`
+  const intervalMs = 3_000
+  const maxPolls = 200 // ~10 minutes, the Playwright webServer timeout
+  let polls = 0
+  let errors = 0
+  let firstError = ""
+  const tick = async () => {
+    polls++
+    try {
+      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(120_000) })
+      if (res.status >= 500) {
+        errors++
+        if (!firstError) firstError = (await res.text()).replace(/\s+/g, " ").slice(0, 600)
+        if (errors >= 3) {
+          console.error(`[e2e] ${label} answers ${res.status} on / (3 polls in a row); first error:\n${firstError}`)
+          child.kill("SIGTERM")
+          process.exitCode = 1
+          setTimeout(() => process.exit(1), 2_000)
+          return
+        }
+      } else {
+        return // healthy: stop polling
+      }
+    } catch {
+      // not listening yet
+    }
+    if (polls >= maxPolls) {
+      console.error(`[e2e] ${label} did not become healthy after ${maxPolls} polls`)
+      child.kill("SIGTERM")
+      setTimeout(() => process.exit(1), 2_000)
+      return
+    }
+    setTimeout(tick, intervalMs)
+  }
+  setTimeout(tick, intervalMs)
+}
+
 if (devMode) {
   fs.rmSync(distPath, { recursive: true, force: true })
   fs.mkdirSync(distPath, { recursive: true })
@@ -108,9 +154,9 @@ if (devMode) {
       SITE_PREVIEW_KEY: process.env.E2E_PREVIEW_KEY ?? "",
       E2E_PHASE: "dev",
       E2E_DEV_NO_FS_CACHE: "1",
-      // next/font downloads Google Fonts on first compile in dev, and `next dev` checks the npm
-      // registry for a newer Next.js version. Nothing else may leave.
-      E2E_ALLOW_HOSTS: "fonts.googleapis.com,fonts.gstatic.com,registry.npmjs.org",
+      // `next dev` checks the npm registry for a newer Next.js version. Nothing else may leave
+      // (fonts are self-hosted).
+      E2E_ALLOW_HOSTS: "registry.npmjs.org",
     },
   })
   const stop = () => dev.kill("SIGTERM")
@@ -120,6 +166,7 @@ if (devMode) {
     restore()
     process.exit(code ?? 0)
   })
+  failFastOnServerErrors(dev, "next dev")
 }
 const skipBuild = process.env.E2E_SKIP_BUILD === "1" && fs.existsSync(path.join(distPath, "BUILD_ID"))
 
@@ -132,7 +179,7 @@ if (!devMode && !skipBuild) {
   const build = spawnSync(process.execPath, [nextBin, "build"], {
     cwd: root,
     stdio: "inherit",
-    env: { ...baseEnv, E2E_PHASE: "build", E2E_ALLOW_HOSTS: "fonts.googleapis.com,fonts.gstatic.com" },
+    env: { ...baseEnv, E2E_PHASE: "build", E2E_ALLOW_HOSTS: "" },
   })
   for (const [file, contents] of snapshot) {
     if (fs.readFileSync(file, "utf8") !== contents) fs.writeFileSync(file, contents)
@@ -180,4 +227,5 @@ if (!devMode) {
   process.on("SIGINT", stop)
   process.on("SIGTERM", stop)
   server.on("exit", code => process.exit(code ?? 0))
+  failFastOnServerErrors(server, "next start")
 }

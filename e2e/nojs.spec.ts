@@ -21,7 +21,7 @@ test.describe("without JavaScript", () => {
   test("hero controls are hidden when they cannot work", async ({ page }) => {
     await page.goto("/")
     const hero = page.getByRole("region", { name: "Featured campaigns" })
-    await expect(hero.getByRole("heading", { level: 2, name: "Niacinamide & Beyond" })).toBeVisible()
+    await expect(hero.getByRole("heading", { level: 2, name: "Dark Spots. Acne. Dryness. We Have Your Fix." })).toBeVisible()
     await expect(hero.getByRole("button")).toHaveCount(0)
   })
 

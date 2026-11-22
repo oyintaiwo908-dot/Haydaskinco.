@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, ArrowUpRight, Sparkles } from "lucide-react"
+import { ArrowRight, Sparkles } from "lucide-react"
 import { AtelierReveal } from "@/components/atelier-reveal"
 import { DragRail } from "@/components/drag-rail"
 import { HomeHeroSlider } from "@/components/home-hero-slider"
@@ -16,10 +16,10 @@ import { getActiveBrands } from "@/lib/supabase/brands"
 import { dealAsProduct } from "@/lib/deals"
 import { getActiveDeals } from "@/lib/supabase/deals"
 import { getPublishedJournals } from "@/lib/supabase/journals"
-import { ALL_CONCERNS, ALL_SKIN_TYPES, slugifyCatalogLabel } from "@/lib/catalog"
+import { ALL_CONCERNS, slugifyCatalogLabel } from "@/lib/catalog"
 import { getEffectivePrice, hasDiscount, type Product } from "@/lib/products"
 import { getSiteUrl } from "@/lib/site"
-import { DELIVERY_SHORT, SOCIAL_URLS } from "@/lib/storefront-copy"
+import { SOCIAL_URLS } from "@/lib/storefront-copy"
 import { getWhatsAppDisplay } from "@/lib/whatsapp"
 
 /** 1h ISR; admin saves refresh it on demand (app/actions/revalidate.ts). Short windows burn Vercel CPU. */
@@ -27,22 +27,21 @@ export const revalidate = 3600
 // No <Suspense> around sections: this page is served whole from the cache, and streamed
 // boundaries would leave visitors without JavaScript looking at skeletons.
 
+/** Pre-redesign category tiles (commit 9ea0dd0): same order, labels, links and images. */
 const COLLECTIONS = [
-  { label: "Sunscreen", note: "Protect", href: "/shop?category=sunscreens", image: "/sunscreen.jpeg" },
-  { label: "Serums", note: "Treat", href: "/shop?category=serums-treatment", image: "/serum.jpeg" },
-  { label: "Face toners", note: "Refresh", href: "/shop?category=face-toners-mists", image: "/toner.jpeg" },
-  { label: "Body moisturiser", note: "Nourish", href: "/shop?category=body-moisturizers-oils", image: "/moisturizer.jpeg" },
+  { label: "Sunscreen", href: "/shop?category=sunscreens", image: "/sunscreen.jpeg" },
+  { label: "Face Toners", href: "/shop?category=face-toners-mists", image: "/toner.jpeg" },
+  { label: "Body Moisturizer", href: "/shop?category=body-moisturizers-oils", image: "/moisturizer.jpeg" },
+  { label: "Serum", href: "/shop?category=serums-treatment", image: "/serum.jpeg" },
 ]
 
-const SKIN_TYPES = ALL_SKIN_TYPES.map(label => ({
+/** The six concerns the home page has featured since the redesign, each to its concern page. */
+const HOME_CONCERNS = ["Acne", "Dark Spots", "Dryness", "Excess Oil", "Fine Lines", "Sensitivity"].map(label => ({
   label,
-  href: `/shop?skinType=${slugifyCatalogLabel(label)}`,
+  href: `/concern/${slugifyCatalogLabel(label)}`,
 }))
 
 const SECTION = "mx-auto max-w-7xl px-5 py-[clamp(4rem,2.5rem+5vw,8rem)] lg:px-8"
-
-const STATEMENT =
-  "Authentic skincare from brands you trust, chosen with care and delivered to your door across Nigeria."
 
 /** The four-step routine, matched to real catalogue products by category. */
 const RITUAL = [
@@ -61,67 +60,37 @@ function ViewAll({ href, label = "View all" }: { href: string; label?: string })
   )
 }
 
-/* ─── Statement band: oversized type, words light up on scroll ─────────────── */
-async function StatementBand() {
+/* ─── Stats row: real numbers, one row of three at every width ───────────── */
+async function StatsBand() {
   const [brands, productCount] = await Promise.all([getActiveBrands(), countProducts()])
-  const words = STATEMENT.split(" ")
   // Real numbers only. Product count shows once the range is big enough to say something.
   const stats = [
-    { value: brands.length, prefix: "", label: "brands on our shelves", show: brands.length > 0 },
-    { value: productCount, prefix: "", label: "products ready to ship", show: productCount >= 50 },
-    { value: ALL_CONCERNS.length, prefix: "", label: "skin concerns, mapped to products", show: true },
-    { value: 100, prefix: "₦", label: "spent earns 1 HAYDA Rewards point", show: true },
+    { value: brands.length, prefix: "", label: "brands on our shelves", short: "brands on our shelves", show: brands.length > 0 },
+    { value: productCount, prefix: "", label: "products ready to ship", short: "products ready to ship", show: productCount >= 50 },
+    { value: ALL_CONCERNS.length, prefix: "", label: "skin concerns, mapped to products", short: "skin concerns to shop by", show: true },
+    { value: 100, prefix: "₦", label: "spent earns 1 HAYDA Rewards point", short: "spent earns 1 point", show: true },
   ]
     .filter(s => s.show)
     .slice(0, 3)
 
   return (
-    <section className="relative overflow-hidden" aria-labelledby="statement-title">
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-[clamp(4rem,2.5rem+5vw,7rem)] md:grid-cols-12 md:gap-10 lg:px-8">
-        <div className="md:col-span-7 lg:col-span-6 lg:col-start-2">
-          <p className="flex items-center gap-3 text-xs font-medium uppercase tracking-[0.24em] text-rose">
-            <span aria-hidden className="h-px w-10 bg-rose" /> The HAYDA promise
-          </p>
-          <h2
-            id="statement-title"
-            className="mt-6 max-w-[19em] font-serif text-[clamp(1.75rem,1.2rem+2vw,3rem)] font-normal leading-[1.15] tracking-[-0.01em] text-navy-deep text-pretty"
-          >
-            {words.map((word, i) => (
-              <span key={i} className="statement-word" style={{ "--w": i } as CSSProperties}>
-                {i === 0 || i === 1 ? <em className="text-rose">{word}</em> : word}{" "}
-              </span>
-            ))}
-          </h2>
-        </div>
-        <figure className="relative mx-auto w-full max-w-sm md:col-span-5 md:max-w-none lg:col-span-4">
-          <span className="relative block aspect-[4/5] overflow-hidden bg-porcelain">
-            <Image
-              src="/editorial/brand-story-1000.webp"
-              alt="Hands holding a frosted skincare bottle"
-              fill
-              sizes="(max-width: 1024px) 90vw, 30vw"
-              className="parallax-img object-cover"
-            />
-          </span>
-          <figcaption className="absolute -bottom-5 -left-3 max-w-[15rem] bg-navy-deep px-5 py-4 text-sm leading-snug text-on-dark shadow-float md:-left-10">
-            <span className="block font-serif text-xl italic text-blush">Trusted brands. Authentic products.</span>
-            {DELIVERY_SHORT}.
-          </figcaption>
-        </figure>
-      </div>
-      <div className="border-y border-navy/10 bg-porcelain">
-        <dl className="mx-auto grid max-w-7xl divide-y divide-navy/10 px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:px-8">
-          {stats.map(stat => (
-            <div key={stat.label} className="flex flex-col-reverse gap-1 py-8 sm:px-8 sm:first:pl-0">
-              <dt className="text-sm text-muted-foreground">{stat.label}</dt>
-              <dd className="font-serif text-[clamp(2.5rem,1.9rem+2vw,3.5rem)] leading-none tracking-[-0.01em] text-navy-deep tabular-nums">
-                {stat.prefix && <span className="currency">{stat.prefix}</span>}
-                <CountUp value={stat.value} />
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
+    <section className="border-t border-navy/10 bg-porcelain" aria-label="HAYDA SKINCo. in numbers">
+      {/* Three compact columns at every width (320px included); labels may wrap to two lines. */}
+      <dl className="stats-row mx-auto grid max-w-7xl grid-cols-3 divide-x divide-navy/10 px-3 sm:px-5 lg:px-8">
+        {stats.map(stat => (
+          <div key={stat.label} className="flex min-w-0 flex-col-reverse justify-end gap-1.5 px-2 py-6 sm:gap-1 sm:px-8 sm:py-8 sm:first:pl-0">
+            {/* Phones get a compact label (two lines at 320px); the full one from 640px. */}
+            <dt className="text-[10.5px] leading-snug text-muted-foreground sm:text-sm">
+              <span className="sm:hidden">{stat.short}</span>
+              <span className="hidden sm:inline">{stat.label}</span>
+            </dt>
+            <dd className="font-serif text-[clamp(1.6rem,1rem+3vw,3.5rem)] leading-none tracking-[-0.01em] text-navy-deep tabular-nums">
+              {stat.prefix && <span className="currency">{stat.prefix}</span>}
+              <CountUp value={stat.value} />
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   )
 }
@@ -163,127 +132,95 @@ async function BrandMarquee() {
   )
 }
 
-/* ─── Category tiles ─────────────────────────────────────────────────────── */
-function CategoryTiles() {
+/* ─── Shop by Category: the pre-redesign section (commit 9ea0dd0), markup unchanged ─── */
+function CategorySection() {
   return (
-    <section className={SECTION} aria-labelledby="categories-title">
-      <SectionHeading
-        eyebrow="Explore"
-        title={<span id="categories-title">Shop by category</span>}
-        action={<ViewAll href="/shop" label="All products" />}
-        className="mb-10"
-      />
-      <ul className="grid grid-cols-2 gap-3 md:grid-cols-12 md:grid-rows-2 md:gap-5">
-        {COLLECTIONS.map((cat, i) => (
-          <li
-            key={cat.label}
-            className={
-              i === 0
-                ? "col-span-2 md:col-span-6 md:row-span-2"
-                : i === 1
-                  ? "col-span-2 md:col-span-6"
-                  : "md:col-span-3"
-            }
+    <AtelierReveal>
+      <section className="mx-auto max-w-7xl px-5 py-12 md:py-20 lg:px-8" aria-labelledby="categories-title">
+        <div className="mb-10 flex items-center gap-6 md:mb-14">
+          <h2 id="categories-title" className="shrink-0 font-serif text-3xl font-medium tracking-tight md:text-4xl">
+            Shop by Category
+          </h2>
+          <span className="hidden h-px flex-1 bg-border sm:block" aria-hidden />
+          <Link
+            href="/shop"
+            className="hidden shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-gold sm:flex"
           >
-            <Link href={cat.href} className="tile group relative block h-full overflow-hidden">
-              <span
-                className={`tile-media relative block overflow-hidden bg-porcelain ${
-                  i === 0 ? "aspect-4/5 md:aspect-auto md:h-full md:min-h-[36rem]" : i === 1 ? "aspect-[16/10] md:aspect-[16/9]" : "aspect-4/5"
-                }`}
-              >
-                <Image
-                  src={cat.image}
-                  alt=""
-                  fill
-                  sizes={i === 0 ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 768px) 50vw, 25vw"}
-                  className="object-cover"
-                />
-                <span aria-hidden className="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-navy-deep/80 via-navy-deep/25 to-transparent" />
-                <span aria-hidden className="tile-curtain" />
-              </span>
-              <span className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3 text-on-dark md:inset-x-6 md:bottom-6">
-                <span>
-                  <span className="block text-[11px] font-medium uppercase tracking-[0.22em] text-on-dark/90">{cat.note}</span>
-                  <span className={`mt-1 block font-serif leading-none ${i === 0 ? "text-[clamp(1.75rem,1.4rem+1.4vw,2.5rem)]" : "text-2xl md:text-3xl"}`}>
-                    {cat.label}
-                  </span>
-                </span>
-                <span className="tile-arrow flex size-10 shrink-0 items-center justify-center rounded-full border border-on-dark/60">
-                  <ArrowUpRight aria-hidden className="size-4" />
-                </span>
+            All Products <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-4 md:gap-6">
+          {COLLECTIONS.map(cat => (
+            <Link
+              key={cat.label}
+              href={cat.href}
+              className="group relative block aspect-3/4 overflow-hidden border border-border bg-secondary"
+            >
+              <Image
+                src={cat.image}
+                alt={cat.label}
+                fill
+                sizes="(max-width: 768px) 50vw, 25vw"
+                className="object-cover transition-transform duration-[800ms] ease-[cubic-bezier(0.22,0.61,0.36,1)] group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+              />
+              <span className="absolute inset-x-3 bottom-3 border border-border bg-background/95 px-2 py-2 text-center text-[10px] font-medium uppercase leading-snug tracking-[0.14em] text-foreground md:text-[11px]">
+                {cat.label}
               </span>
             </Link>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-10 flex flex-wrap items-center gap-2 md:gap-3">
-        <span className="mr-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">By skin type</span>
-        {SKIN_TYPES.map(c => (
+          ))}
+        </div>
+
+        <div className="mt-8 text-center sm:hidden">
           <Link
-            key={c.label}
-            href={c.href}
-            prefetch={false}
-            className="inline-flex min-h-11 items-center rounded-control border border-navy/20 px-5 text-sm font-medium text-navy-deep transition-colors duration-300 hover:border-navy hover:bg-navy hover:text-primary-foreground"
+            href="/shop"
+            className="inline-flex items-center gap-2 border border-border px-8 py-3 text-xs font-medium uppercase tracking-[0.15em] transition-colors hover:border-foreground"
           >
-            {c.label}
+            All Products <ArrowRight className="size-3.5" />
           </Link>
-        ))}
-      </div>
-    </section>
+        </div>
+      </section>
+    </AtelierReveal>
   )
 }
 
-/* ─── Shop by concern: bento grid ────────────────────────────────────────── */
-const CONCERN_TILES = [
-  { concern: "Acne", note: "Clear and calm", image: "/editorial/journal-glow-900.webp", area: "md:col-span-2 md:row-span-2" },
-  { concern: "Dark Spots", note: "Even it out", image: "/editorial/journal-ritual-900.webp", area: "md:row-span-2" },
-  { concern: "Dryness", note: "Deep hydration", image: "/editorial/journal-ingredients-900.webp", area: "" },
-  { concern: "Excess Oil", note: "Balance and mattify", image: "/editorial/product-toner-600.webp", area: "" },
-  { concern: "Fine Lines", note: "Smooth and firm", image: "/editorial/brand-story-1000.webp", area: "md:col-span-2" },
-  { concern: "Sensitivity", note: "Soothe and protect", image: "/editorial/hero-skincare-720.webp", area: "md:col-span-2" },
-] as const
-
-function ConcernBento() {
+/* ─── Skin concerns: the pre-redesign "What's your skin type?" block (9ea0dd0), same markup,
+   carrying the concerns. 9ea0dd0 had no concerns section of its own; this is its counterpart. ─── */
+function ConcernSection() {
   return (
-    <section className={SECTION} aria-labelledby="concerns-title">
-      <SectionHeading
-        eyebrow="Skin concerns"
-        title={<span id="concerns-title">Shop by what your skin needs</span>}
-        action={<ViewAll href="/shop?filter=concerns" label="All concerns" />}
-        className="mb-10"
-      />
-      <ul className="grid auto-rows-[11rem] grid-cols-2 gap-3 md:auto-rows-[13.5rem] md:grid-cols-4 md:gap-4">
-        {CONCERN_TILES.map((tile, i) => (
-          <li key={tile.concern} className={`${i === 0 ? "col-span-2 row-span-2" : i === 5 ? "col-span-2" : ""} ${tile.area}`}>
+    <AtelierReveal>
+      <section className="bg-secondary py-8 md:py-16" aria-labelledby="concerns-title">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <div className="mb-8 text-center">
+            <p className="text-[11px] font-medium uppercase tracking-[0.25em] text-gold">Personalised for you</p>
+            <h2 id="concerns-title" className="mt-1.5 font-serif text-xl md:text-3xl font-medium">What&rsquo;s your skin concern?</h2>
+            <p className="mt-2 text-sm font-light text-muted-foreground">We&rsquo;ll guide you to the right products.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
+            {HOME_CONCERNS.map(c => (
+              <Link
+                key={c.label}
+                href={c.href}
+                prefetch={false}
+                className="group flex flex-col items-center gap-2 border border-border bg-background p-3 text-center transition-colors hover:bg-secondary md:p-5"
+              >
+                <p className="text-xs font-medium group-hover:underline underline-offset-2 md:text-sm">{c.label}</p>
+                <ArrowRight className="size-3 text-muted-foreground transition-colors group-hover:text-foreground" />
+              </Link>
+            ))}
+          </div>
+          <p className="mt-6 text-center">
             <Link
-              href={`/concern/${slugifyCatalogLabel(tile.concern)}`}
+              href="/shop?filter=concerns"
               prefetch={false}
-              className="bento group relative flex h-full overflow-hidden bg-porcelain text-on-dark"
+              className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-gold"
             >
-              <Image
-                src={tile.image}
-                alt=""
-                fill
-                sizes={i === 0 ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 768px) 50vw, 25vw"}
-                className="bento-img object-cover"
-              />
-              {/* One scrim for every tile: navy at 90% under the label, so it reads (AA) on any photo. */}
-              <span aria-hidden className="absolute inset-x-0 bottom-0 h-[70%] bg-linear-to-t from-navy-deep/90 from-25% via-navy-deep/45 to-transparent" />
-              <span aria-hidden className="bento-sheen" />
-              <span className="relative mt-auto flex w-full items-end justify-between gap-3 p-4 md:p-6">
-                <span>
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-blush">{tile.note}</span>
-                  <span className={`mt-1 block font-serif leading-tight ${i === 0 ? "text-[clamp(1.6rem,1.3rem+1.2vw,2.4rem)]" : "text-xl md:text-2xl"}`}>{tile.concern}</span>
-                </span>
-                <span className="bento-arrow flex size-9 shrink-0 items-center justify-center rounded-full border border-on-dark/60">
-                  <ArrowUpRight aria-hidden className="size-4" />
-                </span>
-              </span>
+              All Concerns <ArrowRight className="size-3.5" />
             </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
+          </p>
+        </div>
+      </section>
+    </AtelierReveal>
   )
 }
 
@@ -311,7 +248,8 @@ async function BestsellersRail() {
   )
 }
 
-/* ─── Ritual: pinned, scroll-linked steps ────────────────────────────────── */
+/* ─── Ritual: four step cards. A swipe row on phones (the next card peeks), a grid on desktop.
+   No pinning and no scroll-linked stepping: the page visibly continues past it. ─────────── */
 async function RitualSection() {
   const pool = await queryProducts({ sort: "featured", limit: 60 })
   const used = new Set<string>()
@@ -323,70 +261,55 @@ async function RitualSection() {
   if (steps.length < 3) return null
 
   return (
-    <section
-      className="ritual relative bg-navy-deep text-on-dark"
-      style={{ "--steps": steps.length } as CSSProperties}
-      aria-labelledby="ritual-title"
-    >
-      <div className="ritual-pin">
-        <div className="mx-auto grid w-full max-w-7xl gap-6 px-5 pb-10 pt-20 md:gap-10 md:py-20 lg:grid-cols-[auto_1fr] lg:gap-16 lg:px-8">
-          <div className="flex gap-6 lg:flex-col lg:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-blush">The ritual</p>
-              <h2 id="ritual-title" className="mt-3 max-w-[16ch] font-serif text-[clamp(1.6rem,1.2rem+1.6vw,2.75rem)] font-normal leading-[1.08] lg:max-w-[12ch]">
-                Four steps to skin that behaves
-              </h2>
-            </div>
-            <span aria-hidden className="relative hidden h-40 w-px bg-on-dark/20 lg:block">
-              <span className="ritual-bar absolute inset-0 bg-blush" />
-            </span>
+    <section className="ritual bg-navy-deep text-on-dark" aria-labelledby="ritual-title">
+      <div className="mx-auto max-w-7xl py-10 md:py-16">
+        <div className="flex items-end justify-between gap-6 px-5 lg:px-8">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-blush">The ritual</p>
+            <h2 id="ritual-title" className="mt-2 max-w-[18ch] font-serif text-[clamp(1.6rem,1.2rem+1.6vw,2.75rem)] font-normal leading-[1.08] md:mt-3">
+              Four steps to skin that behaves
+            </h2>
           </div>
-          <ol className="ritual-steps">
-            {steps.map((s, k) => {
-              const price = getEffectivePrice(s.product)
-              return (
-                <li key={s.step} className="ritual-step grid items-center gap-6 md:grid-cols-[1fr_minmax(0,24rem)] md:gap-12" style={{ "--k": k } as CSSProperties}>
-                  <div>
-                    <p className="hidden font-serif text-[clamp(3rem,2rem+4vw,6rem)] leading-none text-on-dark/15 sm:block" aria-hidden>
-                      0{k + 1}
-                    </p>
-                    <h3 className="font-serif sm:-mt-4 text-[clamp(2rem,1.5rem+1.8vw,3rem)] font-normal italic leading-none md:-mt-6">
+          <p aria-hidden className="shrink-0 text-[11px] font-medium uppercase tracking-[0.18em] text-on-dark/70 md:hidden">
+            Swipe →
+          </p>
+        </div>
+        <ol className="ritual-row mt-6 md:mt-10" aria-label="The four steps">
+          {steps.map((s, k) => {
+            const price = getEffectivePrice(s.product)
+            return (
+              <li key={s.step} className="ritual-card">
+                <article className="flex h-full flex-col bg-white text-navy-deep shadow-float">
+                  <Link href={`/product/${s.product.id}`} prefetch={false} className="group block p-2 pb-0">
+                    <span className="product-stage relative block aspect-5/4 overflow-hidden md:aspect-square">
+                      <Image src={s.product.image || "/placeholder.svg"} alt="" fill sizes="(max-width: 768px) 72vw, 22vw" className="object-cover" />
+                      <span aria-hidden className="absolute left-2 top-1.5 font-serif text-3xl leading-none text-navy-deep/25 md:text-4xl">
+                        0{k + 1}
+                      </span>
+                    </span>
+                    <span className="flex items-end justify-between gap-3 px-1 pt-2.5">
+                      <span className="min-w-0">
+                        <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-rose">{s.product.brand}</span>
+                        <span className="mt-0.5 block truncate font-serif text-lg">{s.product.name}</span>
+                      </span>
+                      <Price amount={price} compareAt={hasDiscount(s.product) ? s.product.price : null} size="sm" className="shrink-0 font-serif text-base" />
+                    </span>
+                  </Link>
+                  <div className="mt-auto px-3 pb-3 pt-2">
+                    <h3 className="font-serif text-2xl font-normal italic leading-none">
                       <span className="sr-only">Step {k + 1}: </span>
                       {s.step}
                     </h3>
-                    <p className="mt-4 max-w-md text-base leading-relaxed text-on-dark/85 md:mt-5 md:text-lg">{s.line}</p>
-                    <Link href={s.href} prefetch={false} className="mt-5 inline-flex md:mt-8 items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-blush">
-                      <span className="link-wipe pb-0.5">Shop {s.step.toLowerCase()}</span> <ArrowRight aria-hidden className="size-4" />
+                    <p className="mt-1.5 line-clamp-2 text-sm leading-snug text-muted-foreground">{s.line}</p>
+                    <Link href={s.href} prefetch={false} className="mt-2.5 inline-flex min-h-8 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-navy">
+                      <span className="link-wipe pb-0.5">Shop {s.step.toLowerCase()}</span> <ArrowRight aria-hidden className="size-3.5" />
                     </Link>
                   </div>
-                  <Link href={`/product/${s.product.id}`} prefetch={false} className="group block w-full max-w-[12.5rem] bg-white p-2 text-navy-deep shadow-float sm:max-w-[15rem] md:max-w-none">
-                    <span className="product-stage relative block aspect-4/5 overflow-hidden">
-                      <Image
-                        src={s.product.image || "/placeholder.svg"}
-                        alt=""
-                        fill
-                        sizes="(max-width: 768px) 90vw, 24rem"
-                        className="ritual-image object-cover"
-                      />
-                    </span>
-                    <span className="flex items-end justify-between gap-3 px-2 pb-1 pt-3">
-                      <span className="min-w-0">
-                        <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-rose">{s.product.brand}</span>
-                        <span className="mt-0.5 block truncate font-serif text-xl">{s.product.name}</span>
-                      </span>
-                      <Price
-                        amount={price}
-                        compareAt={hasDiscount(s.product) ? s.product.price : null}
-                        size="sm"
-                        className="shrink-0 font-serif text-lg"
-                      />
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ol>
-        </div>
+                </article>
+              </li>
+            )
+          })}
+        </ol>
       </div>
     </section>
   )
@@ -428,11 +351,27 @@ async function SaleSection() {
   )
 }
 
-/* ─── Journal feature ────────────────────────────────────────────────────── */
+/* ─── Journal feature ──────────────────────────────────────────────────────
+   It used to render nothing when no article was published, which is why it vanished from the
+   live site (its database has no published journals). It now always shows: the articles when
+   there are some, otherwise a short "coming soon" note linking to the Journal. */
 async function JournalFeature() {
   const journals = await getPublishedJournals()
   const [lead, ...rest] = journals.slice(0, 3)
-  if (!lead) return null
+  if (!lead) {
+    return (
+      <section className="bg-porcelain" aria-labelledby="journal-title">
+        <div className="mx-auto max-w-7xl px-5 py-[clamp(3rem,2rem+3vw,5rem)] lg:px-8">
+          <SectionHeading
+            eyebrow="Knowledge & rituals"
+            title={<span id="journal-title">From the Journal</span>}
+            description="Skincare guides and routines from our team are coming soon."
+            action={<ViewAll href="/journal" label="Visit the Journal" />}
+          />
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="bg-porcelain" aria-labelledby="journal-title">
@@ -586,14 +525,14 @@ export default function HomePage() {
     <>
       <OrganizationJsonLd />
       <HomeHeroSlider />
-      <StatementBand />
-      <BrandMarquee />
-      <CategoryTiles />
+      <CategorySection />
+      <ConcernSection />
       <BestsellersRail />
-      <ConcernBento />
       <RitualSection />
       <SaleSection />
       <JournalFeature />
+      <StatsBand />
+      <BrandMarquee />
       <RewardsBand />
     </>
   )

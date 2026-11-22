@@ -1,26 +1,98 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Cormorant_Garamond, Geist_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import { getSiteUrl } from '@/lib/site'
 import './globals.css'
 
-// Variable fonts: one file per subset covers every weight in use.
+// Self-hosted fonts (app/fonts/, sources and licences in app/fonts/README.md), so builds and
+// dev never need Google Fonts. Same files, CSS variables, preloads and metric-matched fallbacks
+// as the next/font/google setup they replace.
+//
+// Family names: next/font/local (Turbopack) names the family in each CSS variable after the JS
+// constant, so every @font-face declares that same name (Geist, GeistMono, CormorantGaramond).
+// The Cormorant subset and italic calls all declare "CormorantGaramond", so they join one family
+// and var(--font-cormorant) reaches all of them; only the main call generates the fallback.
+//
+// Variable fonts: one file per subset covers every weight in use. Calls that share a family
+// name each add @font-face rules with their subset's unicode-range (copied from Google Fonts),
+// so a browser only downloads the subsets a page uses. next/font needs literal arguments, so
+// the latin / latin-ext ranges are repeated in each call.
 // Geist has no naira glyph (U+20A6) in any subset. Prices render through <Money>
 // (components/ui/price.tsx), which sets ₦ in `.currency` with Cormorant: its
 // latin-ext file carries the glyph, so the sign never falls back to a system font.
-const geist = Geist({
+const Geist = localFont({
+  src: './fonts/geist-latin-var.woff2',
+  weight: '100 900',
+  style: 'normal',
   variable: '--font-geist-sans',
-  subsets: ['latin'],
+  declarations: [
+    { prop: 'font-family', value: "'Geist'" },
+    { prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' },
+  ],
+  adjustFontFallback: 'Arial',
 })
-const cormorant = Cormorant_Garamond({
+const CormorantGaramond = localFont({
+  src: './fonts/cormorant-garamond-latin-var.woff2',
+  weight: '300 700',
+  style: 'normal',
   variable: '--font-cormorant',
-  subsets: ['latin', 'latin-ext'],
+  declarations: [
+    { prop: 'font-family', value: "'CormorantGaramond'" },
+    { prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' },
+  ],
+  adjustFontFallback: 'Times New Roman',
 })
-// Order references only; not worth a preload.
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+const CormorantGaramondExt = localFont({
+  src: './fonts/cormorant-garamond-latin-ext-var.woff2',
+  weight: '300 700',
+  style: 'normal',
+  variable: '--font-cormorant-ext',
+  declarations: [
+    { prop: 'font-family', value: "'CormorantGaramond'" },
+    { prop: 'unicode-range', value: 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF' },
+  ],
+  adjustFontFallback: false,
+})
+// Real italics (they were synthesised before). Not preloaded: italic text is a few headings.
+const CormorantGaramondItalic = localFont({
+  src: './fonts/cormorant-garamond-italic-latin-var.woff2',
+  weight: '300 700',
+  style: 'italic',
+  variable: '--font-cormorant-italic',
+  declarations: [
+    { prop: 'font-family', value: "'CormorantGaramond'" },
+    { prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' },
+  ],
+  adjustFontFallback: false,
   preload: false,
 })
+const CormorantGaramondItalicExt = localFont({
+  src: './fonts/cormorant-garamond-italic-latin-ext-var.woff2',
+  weight: '300 700',
+  style: 'italic',
+  variable: '--font-cormorant-italic-ext',
+  declarations: [
+    { prop: 'font-family', value: "'CormorantGaramond'" },
+    { prop: 'unicode-range', value: 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF' },
+  ],
+  adjustFontFallback: false,
+  preload: false,
+})
+// Order references only; not worth a preload.
+const GeistMono = localFont({
+  src: './fonts/geist-mono-latin-var.woff2',
+  weight: '100 900',
+  style: 'normal',
+  variable: '--font-geist-mono',
+  declarations: [
+    { prop: 'font-family', value: "'GeistMono'" },
+    { prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' },
+  ],
+  adjustFontFallback: 'Arial',
+  preload: false,
+})
+const fontVariables = [Geist, GeistMono, CormorantGaramond, CormorantGaramondExt, CormorantGaramondItalic, CormorantGaramondItalicExt]
+  .map(f => f.variable)
+  .join(' ')
 
 const siteUrl = getSiteUrl()
 
@@ -137,7 +209,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en-NG"
-      className={`light bg-background ${geist.variable} ${geistMono.variable} ${cormorant.variable}`}
+      className={`light bg-background ${fontVariables}`}
     >
       <body className="font-sans antialiased">{children}</body>
     </html>
